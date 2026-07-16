@@ -7,6 +7,7 @@ const divisionRoutes = require("./routes/divisionRoutes");
 const operationalUnitRoutes = require("./routes/operationalUnitRoutes");
 const operationalLocationRoutes = require("./routes/operationalLocationRoutes");
 const locationSupervisorRoutes = require("./routes/locationSupervisorRoutes");
+const workerRoutes = require("./routes/workerRoutes");
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use("/api/divisions", divisionRoutes);
 app.use("/api/operational-units", operationalUnitRoutes);
 app.use("/api/operational-locations", operationalLocationRoutes);
 app.use("/api/location-supervisors", locationSupervisorRoutes);
+app.use("/api/workers", workerRoutes);
 
 const PORT = process.env.PORT || 5000;
 

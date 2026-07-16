@@ -8,7 +8,7 @@ const operationalUnitRoutes = require("./routes/operationalUnitRoutes");
 const operationalLocationRoutes = require("./routes/operationalLocationRoutes");
 const locationSupervisorRoutes = require("./routes/locationSupervisorRoutes");
 const workerRoutes = require("./routes/workerRoutes");
-
+const assignmentRoutes = require("./routes/assignmentRoutes");
 const app = express();
 
 app.use(cors());
@@ -25,11 +25,12 @@ app.use("/api/operational-units", operationalUnitRoutes);
 app.use("/api/operational-locations", operationalLocationRoutes);
 app.use("/api/location-supervisors", locationSupervisorRoutes);
 app.use("/api/workers", workerRoutes);
+app.use("/api/assignments", assignmentRoutes);
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log("CSATMS backend is Running on port ${PORT}");
+  console.log(`CSATMS backend is Running on port ${PORT}`);
 });
 
 module.exports = app;

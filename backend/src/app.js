@@ -6,6 +6,7 @@ const authRoutes = require("./routes/authRoutes");
 const divisionRoutes = require("./routes/divisionRoutes");
 const operationalUnitRoutes = require("./routes/operationalUnitRoutes");
 const operationalLocationRoutes = require("./routes/operationalLocationRoutes");
+const locationSupervisorRoutes = require("./routes/locationSupervisorRoutes");
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/divisions", divisionRoutes);
 app.use("/api/operational-units", operationalUnitRoutes);
 app.use("/api/operational-locations", operationalLocationRoutes);
+app.use("/api/location-supervisors", locationSupervisorRoutes);
 
 const PORT = process.env.PORT || 5000;
 

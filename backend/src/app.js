@@ -9,6 +9,8 @@ const operationalLocationRoutes = require("./routes/operationalLocationRoutes");
 const locationSupervisorRoutes = require("./routes/locationSupervisorRoutes");
 const workerRoutes = require("./routes/workerRoutes");
 const assignmentRoutes = require("./routes/assignmentRoutes");
+const transferRoutes = require("./routes/transferRoutes");
+
 const app = express();
 
 app.use(cors());
@@ -26,6 +28,7 @@ app.use("/api/operational-locations", operationalLocationRoutes);
 app.use("/api/location-supervisors", locationSupervisorRoutes);
 app.use("/api/workers", workerRoutes);
 app.use("/api/assignments", assignmentRoutes);
+app.use("/api/transfers", transferRoutes);
 
 const PORT = process.env.PORT || 5000;
 

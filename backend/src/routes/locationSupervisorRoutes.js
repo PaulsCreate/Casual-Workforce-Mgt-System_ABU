@@ -5,8 +5,8 @@ const controller = require("../controllers/locationSupervisorController");
 
 router.use(authenticate);
 
-router.post("/", authorize("administrator"), controller.assign);
-router.delete("/", authorize("administrator"), controller.unassign);
+router.post("/", authorize("administrator", "division_admin"), controller.assign);
+router.delete("/", authorize("administrator", "division_admin"), controller.unassign);
 router.get("/location/:locationId", controller.listForLocation);
 router.get("/supervisor/:userId", controller.listForSupervisor);
 

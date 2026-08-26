@@ -21,22 +21,27 @@ async function createInitialAssignment({
   division_id,
   operational_unit_id,
   operational_location_id,
-  supervisor_id,
   effective_from,
 }) {
   const result = await pool.query(
-    `INSERT INTO assignments (worker_id, division_id, operational_unit_id, operational_location_id, supervisor_id, effective_from)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO assignments (worker_id, division_id, operational_unit_id, operational_location_id, effective_from)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
     [
       worker_id,
       division_id,
       operational_unit_id,
       operational_location_id,
-      supervisor_id,
       effective_from,
     ],
   );
+  return result.rows[0];
+}
+
+async function getAssignmentById(id) {
+  const result = await pool.query("SELECT * FROM assignments WHERE id = $1", [
+    id,
+  ]);
   return result.rows[0];
 }
 
@@ -47,7 +52,6 @@ async function executeTransfer({
   to_division_id,
   to_operational_unit_id,
   to_operational_location_id,
-  supervisor_id,
   effective_date,
   transfer_id,
 }) {
@@ -61,15 +65,14 @@ async function executeTransfer({
     );
 
     const newAssignment = await client.query(
-      `INSERT INTO assignments (worker_id, division_id, operational_unit_id, operational_location_id, supervisor_id, effective_from, transfer_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO assignments (worker_id, division_id, operational_unit_id, operational_location_id, effective_from, transfer_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
       [
         worker_id,
         to_division_id,
         to_operational_unit_id,
         to_operational_location_id,
-        supervisor_id,
         effective_date,
         transfer_id,
       ],
@@ -90,4 +93,5 @@ module.exports = {
   getAssignmentHistoryForWorker,
   createInitialAssignment,
   executeTransfer,
+  getAssignmentById,
 };

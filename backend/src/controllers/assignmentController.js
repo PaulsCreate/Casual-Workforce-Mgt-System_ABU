@@ -13,7 +13,6 @@ async function createAssignment(req, res) {
       division_id,
       operational_unit_id,
       operational_location_id,
-      supervisor_id,
       effective_from,
     } = req.body;
 
@@ -22,15 +21,18 @@ async function createAssignment(req, res) {
       !division_id ||
       !operational_unit_id ||
       !operational_location_id ||
-      !supervisor_id ||
       !effective_from
     ) {
       return res
         .status(400)
         .json({
           error:
-            "worker_id, division_id, operational_unit_id, operational_location_id, supervisor_id, and effective_from are all required",
+            "worker_id, division_id, operational_unit_id, operational_location_id, and effective_from are all required",
         });
+    }
+
+    if (req.user.role === "division_admin" && Number(division_id) !== Number(req.user.division_id)) {
+      return res.status(403).json({ error: "Access denied. Cannot assign to another division." });
     }
 
     const existing = await getActiveAssignmentForWorker(worker_id);
@@ -48,7 +50,6 @@ async function createAssignment(req, res) {
       division_id,
       operational_unit_id,
       operational_location_id,
-      supervisor_id,
       effective_from,
     });
     res.status(201).json(assignment);
@@ -63,7 +64,7 @@ async function createAssignment(req, res) {
         .status(400)
         .json({
           error:
-            "One of the referenced ids (worker, division, unit, location, or supervisor) does not exist",
+            "One of the referenced ids (worker, division, unit, or location) does not exist",
         });
     }
     console.error("Create assignment error:", err);

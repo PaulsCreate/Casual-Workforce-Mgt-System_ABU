@@ -5,10 +5,10 @@ const controller = require("../controllers/operationalUnitController");
 
 router.use(authenticate);
 
-router.post("/", authorize("administrator"), controller.create);
+router.post("/", authorize("administrator", "division_admin"), controller.create);
 router.get("/", controller.list);
 router.get("/:id", controller.getOne);
-router.put("/:id", authorize("administrator"), controller.update);
-router.delete("/:id", authorize("administrator"), controller.remove);
+router.put("/:id", authorize("administrator", "division_admin"), controller.update);
+router.delete("/:id", authorize("administrator", "division_admin"), controller.remove);
 
 module.exports = router;

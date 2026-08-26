@@ -14,11 +14,29 @@ async function createOperationalLocation({
   return result.rows[0];
 }
 
-async function getAllOperationalLocations(operational_unit_id) {
+async function getAllOperationalLocations(operational_unit_id, division_id) {
   if (operational_unit_id) {
+    let query = `
+      SELECT ol.* FROM operational_locations ol
+      JOIN operational_units ou ON ou.id = ol.operational_unit_id
+      WHERE ol.operational_unit_id = $1
+    `;
+    const params = [operational_unit_id];
+    if (division_id) {
+      query += " AND ou.division_id = $2";
+      params.push(division_id);
+    }
+    query += " ORDER BY ol.name";
+    const result = await pool.query(query, params);
+    return result.rows;
+  }
+  if (division_id) {
     const result = await pool.query(
-      "SELECT * FROM operational_locations WHERE operational_unit_id = $1 ORDER BY name",
-      [operational_unit_id],
+      `SELECT ol.* FROM operational_locations ol
+       JOIN operational_units ou ON ou.id = ol.operational_unit_id
+       WHERE ou.division_id = $1
+       ORDER BY ol.operational_unit_id, ol.name`,
+      [division_id]
     );
     return result.rows;
   }

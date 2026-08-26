@@ -36,7 +36,6 @@ async function completeTransfer({
   to_division_id,
   to_operational_unit_id,
   to_operational_location_id,
-  supervisor_id,
   effective_date,
   authorized_by,
   transfer_letter_reference,
@@ -51,15 +50,14 @@ async function completeTransfer({
     );
 
     const newAssignment = await client.query(
-      `INSERT INTO assignments (worker_id, division_id, operational_unit_id, operational_location_id, supervisor_id, effective_from, transfer_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO assignments (worker_id, division_id, operational_unit_id, operational_location_id, effective_from, transfer_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
       [
         worker_id,
         to_division_id,
         to_operational_unit_id,
         to_operational_location_id,
-        supervisor_id,
         effective_date,
         transfer_id,
       ],
@@ -109,7 +107,14 @@ async function getTransfersForWorker(worker_id) {
   return result.rows;
 }
 
-async function getTransfersByStatus(status) {
+async function getTransfersByStatus(status, divisionId) {
+  if (divisionId) {
+    const result = await pool.query(
+      "SELECT * FROM transfers WHERE status = $1 AND to_division_id = $2 ORDER BY requested_at",
+      [status, divisionId],
+    );
+    return result.rows;
+  }
   const result = await pool.query(
     "SELECT * FROM transfers WHERE status = $1 ORDER BY requested_at",
     [status],

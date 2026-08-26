@@ -5,9 +5,10 @@ const controller = require("../controllers/workerController");
 
 router.use(authenticate);
 
-router.post("/", authorize("administrator"), controller.create);
+// division_admin can also create, view, and update workers in their division
+router.post("/", authorize("administrator", "division_admin"), controller.create);
 router.get("/", controller.list);
 router.get("/:id", controller.getOne);
-router.put("/:id", authorize("administrator"), controller.update);
+router.put("/:id", authorize("administrator", "division_admin"), controller.update);
 
 module.exports = router;

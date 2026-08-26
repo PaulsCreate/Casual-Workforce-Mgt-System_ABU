@@ -5,6 +5,7 @@ const {
   updateOperationalLocation,
   deleteOperationalLocation,
 } = require("../models/operationalLocationModel");
+const { getOperationalUnitById } = require("../models/operationalUnitModel");
 
 async function create(req, res) {
   try {
@@ -13,6 +14,13 @@ async function create(req, res) {
       return res
         .status(400)
         .json({ error: "operational_unit_id and name are required" });
+    }
+
+    if (req.user.role === "division_admin") {
+      const unit = await getOperationalUnitById(operational_unit_id);
+      if (!unit || Number(unit.division_id) !== Number(req.user.division_id)) {
+        return res.status(403).json({ error: "Access denied. Cannot create locations for units outside your division." });
+      }
     }
     const location = await createOperationalLocation({
       operational_unit_id,
@@ -45,8 +53,13 @@ async function create(req, res) {
 
 async function list(req, res) {
   try {
+    let divisionId = null;
+    if (req.user.role === "division_admin") {
+      divisionId = req.user.division_id;
+    }
     const locations = await getAllOperationalLocations(
       req.query.operational_unit_id,
+      divisionId
     );
     res.json(locations);
   } catch (err) {
@@ -62,6 +75,12 @@ async function getOne(req, res) {
     const location = await getOperationalLocationById(req.params.id);
     if (!location) {
       return res.status(404).json({ error: "Operational location not found" });
+    }
+    if (req.user.role === "division_admin") {
+      const unit = await getOperationalUnitById(location.operational_unit_id);
+      if (!unit || Number(unit.division_id) !== Number(req.user.division_id)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
     }
     res.json(location);
   } catch (err) {
@@ -80,13 +99,22 @@ async function update(req, res) {
     if (!name) {
       return res.status(400).json({ error: "Location name is required" });
     }
+
+    const existing = await getOperationalLocationById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: "Operational location not found" });
+    }
+    if (req.user.role === "division_admin") {
+      const unit = await getOperationalUnitById(existing.operational_unit_id);
+      if (!unit || Number(unit.division_id) !== Number(req.user.division_id)) {
+        return res.status(403).json({ error: "Access denied. Cannot modify locations outside your division." });
+      }
+    }
+
     const location = await updateOperationalLocation(req.params.id, {
       name,
       description,
     });
-    if (!location) {
-      return res.status(404).json({ error: "Operational location not found" });
-    }
     res.json(location);
   } catch (err) {
     console.error("Update operational location error:", err);
@@ -100,10 +128,18 @@ async function update(req, res) {
 
 async function remove(req, res) {
   try {
-    const location = await deleteOperationalLocation(req.params.id);
-    if (!location) {
+    const existing = await getOperationalLocationById(req.params.id);
+    if (!existing) {
       return res.status(404).json({ error: "Operational location not found" });
     }
+    if (req.user.role === "division_admin") {
+      const unit = await getOperationalUnitById(existing.operational_unit_id);
+      if (!unit || Number(unit.division_id) !== Number(req.user.division_id)) {
+        return res.status(403).json({ error: "Access denied. Cannot delete locations outside your division." });
+      }
+    }
+
+    const location = await deleteOperationalLocation(req.params.id);
     res.json({ message: "Operational location deleted", location });
   } catch (err) {
     if (err.code === "23503") {

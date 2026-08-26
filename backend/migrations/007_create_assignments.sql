@@ -8,7 +8,6 @@ CREATE TABLE assignments (
     division_id BIGINT NOT NULL REFERENCES divisions(id) ON DELETE RESTRICT,
     operational_unit_id BIGINT NOT NULL REFERENCES operational_units(id) ON DELETE RESTRICT,
     operational_location_id BIGINT NOT NULL REFERENCES operational_locations(id) ON DELETE RESTRICT,
-    supervisor_id BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     effective_from DATE NOT NULL,
     effective_to DATE,
     transfer_id BIGINT,

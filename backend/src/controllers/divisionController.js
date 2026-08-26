@@ -29,6 +29,10 @@ async function create(req, res) {
 
 async function list(req, res) {
   try {
+    if (req.user.role === "division_admin") {
+      const division = await getDivisionById(req.user.division_id);
+      return res.json(division ? [division] : []);
+    }
     const divisions = await getAllDivisions();
     res.json(divisions);
   } catch (err) {
@@ -42,6 +46,9 @@ async function getOne(req, res) {
     const division = await getDivisionById(req.params.id);
     if (!division) {
       return res.status(404).json({ error: "Division not found" });
+    }
+    if (req.user.role === "division_admin" && Number(division.id) !== Number(req.user.division_id)) {
+      return res.status(403).json({ error: "Access denied" });
     }
     res.json(division);
   } catch (err) {

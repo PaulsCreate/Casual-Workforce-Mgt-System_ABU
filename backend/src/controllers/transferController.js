@@ -7,6 +7,7 @@ const {
   getTransfersByStatus,
 } = require("../models/transferModel");
 const { getActiveAssignmentForWorker } = require("../models/assignmentModel");
+const { logAction } = require("../models/auditLogModel");
 
 async function create(req, res) {
   try {
@@ -33,6 +34,10 @@ async function create(req, res) {
         .json({
           error: "This worker has no active assignment to transfer from",
         });
+    }
+
+    if (req.user.role === "division_admin" && Number(currentAssignment.division_id) !== Number(req.user.division_id)) {
+      return res.status(403).json({ error: "Access denied. This worker is not in your division." });
     }
 
     // Transfers never cross divisions - a worker's division is fixed by their
@@ -69,6 +74,14 @@ async function create(req, res) {
       requested_by: req.user.id,
     });
 
+    await logAction({
+      user_id: req.user.id,
+      action: "create_transfer",
+      entity_type: "transfer",
+      entity_id: transfer.id,
+      details: { transfer_type, worker_id },
+    });
+
     // Internal transfers complete immediately - no approval gate required.
     if (transfer_type === "internal") {
       const result = await completeTransfer({
@@ -78,11 +91,19 @@ async function create(req, res) {
         to_division_id,
         to_operational_unit_id,
         to_operational_location_id,
-        supervisor_id: currentAssignment.supervisor_id,
         effective_date: new Date().toISOString().slice(0, 10),
         authorized_by: null,
         transfer_letter_reference: null,
       });
+
+      await logAction({
+        user_id: req.user.id,
+        action: "complete_transfer",
+        entity_type: "transfer",
+        entity_id: transfer.id,
+        details: { transfer_type: "internal", worker_id },
+      });
+
       return res.status(201).json(result);
     }
 
@@ -98,12 +119,14 @@ async function create(req, res) {
 
 async function approve(req, res) {
   try {
-    const { supervisor_id, effective_date, transfer_letter_reference } =
-      req.body;
+    const { effective_date, transfer_letter_reference } = req.body;
     const transfer = await getTransferById(req.params.id);
 
     if (!transfer) {
       return res.status(404).json({ error: "Transfer not found" });
+    }
+    if (req.user.role === "division_admin" && Number(transfer.to_division_id) !== Number(req.user.division_id)) {
+      return res.status(403).json({ error: "Access denied" });
     }
     if (transfer.status !== "pending") {
       return res
@@ -115,11 +138,11 @@ async function approve(req, res) {
         .status(400)
         .json({ error: "Only inter_unit transfers require approval" });
     }
-    if (!supervisor_id || !effective_date) {
+    if (!effective_date) {
       return res
         .status(400)
         .json({
-          error: "supervisor_id and effective_date are required to approve",
+          error: "effective_date is required to approve",
         });
     }
 
@@ -130,10 +153,25 @@ async function approve(req, res) {
       to_division_id: transfer.to_division_id,
       to_operational_unit_id: transfer.to_operational_unit_id,
       to_operational_location_id: transfer.to_operational_location_id,
-      supervisor_id,
       effective_date,
       authorized_by: req.user.id,
       transfer_letter_reference,
+    });
+
+    await logAction({
+      user_id: req.user.id,
+      action: "approve_transfer",
+      entity_type: "transfer",
+      entity_id: transfer.id,
+      details: { authorized_by: req.user.id, worker_id: transfer.worker_id, transfer_letter_reference },
+    });
+
+    await logAction({
+      user_id: req.user.id,
+      action: "complete_transfer",
+      entity_type: "transfer",
+      entity_id: transfer.id,
+      details: { transfer_type: "inter_unit", worker_id: transfer.worker_id },
     });
 
     res.json(result);
@@ -147,13 +185,29 @@ async function approve(req, res) {
 
 async function reject(req, res) {
   try {
-    const transfer = await rejectTransfer(req.params.id);
+    const transfer = await getTransferById(req.params.id);
     if (!transfer) {
-      return res
-        .status(404)
-        .json({ error: "Transfer not found or not pending" });
+      return res.status(404).json({ error: "Transfer not found" });
     }
-    res.json(transfer);
+    if (req.user.role === "division_admin" && Number(transfer.to_division_id) !== Number(req.user.division_id)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    const result = await rejectTransfer(req.params.id);
+    if (!result) {
+      return res
+        .status(400)
+        .json({ error: "Transfer could not be rejected or is not pending" });
+    }
+
+    await logAction({
+      user_id: req.user.id,
+      action: "reject_transfer",
+      entity_type: "transfer",
+      entity_id: result.id,
+      details: { worker_id: result.worker_id },
+    });
+
+    res.json(result);
   } catch (err) {
     console.error("Reject transfer error:", err);
     res
@@ -176,7 +230,11 @@ async function history(req, res) {
 
 async function pending(req, res) {
   try {
-    const transfers = await getTransfersByStatus("pending");
+    let divisionId = null;
+    if (req.user.role === "division_admin") {
+      divisionId = req.user.division_id;
+    }
+    const transfers = await getTransfersByStatus("pending", divisionId);
     res.json(transfers);
   } catch (err) {
     console.error("Pending transfers error:", err);

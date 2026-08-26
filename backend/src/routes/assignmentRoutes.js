@@ -5,7 +5,7 @@ const controller = require("../controllers/assignmentController");
 
 router.use(authenticate);
 
-router.post("/", authorize("administrator"), controller.createAssignment);
+router.post("/", authorize("administrator", "division_admin"), controller.createAssignment);
 router.get("/worker/:workerId/history", controller.getHistory);
 router.get("/worker/:workerId/current", controller.getCurrent);
 

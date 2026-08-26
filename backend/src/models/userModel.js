@@ -39,4 +39,50 @@ async function createUser({
   return result.rows[0];
 }
 
-module.exports = { findByUsername, findById, createUser };
+async function getAllUsers(role) {
+  let query = "SELECT id, full_name, username, email, role, division_id, is_active, created_at FROM users";
+  const params = [];
+  if (role) {
+    query += " WHERE role = $1";
+    params.push(role);
+  }
+  query += " ORDER BY full_name";
+  const result = await pool.query(query, params);
+  return result.rows;
+}
+
+// Returns supervisors (and optionally all users) scoped to a specific division
+async function getUsersByDivision(divisionId, role) {
+  let query =
+    "SELECT id, full_name, username, email, role, division_id, is_active, created_at FROM users WHERE division_id = $1";
+  const params = [divisionId];
+  if (role) {
+    query += " AND role = $2";
+    params.push(role);
+  }
+  query += " ORDER BY full_name";
+  const result = await pool.query(query, params);
+  return result.rows;
+}
+
+// Soft-deactivate a user (division_admin can only deactivate supervisors in their division)
+async function deactivateUser(id) {
+  const result = await pool.query(
+    `UPDATE users SET is_active = false WHERE id = $1
+     RETURNING id, full_name, username, role, division_id, is_active`,
+    [id]
+  );
+  return result.rows[0];
+}
+
+// Reactivate a previously deactivated user
+async function reactivateUser(id) {
+  const result = await pool.query(
+    `UPDATE users SET is_active = true WHERE id = $1
+     RETURNING id, full_name, username, role, division_id, is_active`,
+    [id]
+  );
+  return result.rows[0];
+}
+
+module.exports = { findByUsername, findById, createUser, getAllUsers, getUsersByDivision, deactivateUser, reactivateUser };

@@ -10,6 +10,10 @@ const locationSupervisorRoutes = require("./routes/locationSupervisorRoutes");
 const workerRoutes = require("./routes/workerRoutes");
 const assignmentRoutes = require("./routes/assignmentRoutes");
 const transferRoutes = require("./routes/transferRoutes");
+const attendanceRoutes = require("./routes/attendanceRoutes");
+const reportRoutes = require("./routes/reportRoutes");
+const userRoutes = require("./routes/userRoutes");
+const auditRoutes = require("./routes/auditRoutes");
 
 const app = express();
 
@@ -29,6 +33,10 @@ app.use("/api/location-supervisors", locationSupervisorRoutes);
 app.use("/api/workers", workerRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/transfers", transferRoutes);
+app.use("/api/attendance", attendanceRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/audit-logs", auditRoutes);
 
 const PORT = process.env.PORT || 5000;
 

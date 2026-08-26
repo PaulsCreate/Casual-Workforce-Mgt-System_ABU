@@ -4,7 +4,7 @@ const { authenticate, authorize } = require("../middleware/auth");
 const controller = require("../controllers/transferController");
 
 router.use(authenticate);
-router.use(authorize("administrator"));
+router.use(authorize("administrator", "division_admin"));
 
 router.post("/", controller.create);
 router.post("/:id/approve", controller.approve);

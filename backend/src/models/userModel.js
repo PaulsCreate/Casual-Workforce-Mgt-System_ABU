@@ -1,9 +1,13 @@
 const pool = require("../config/db");
 
 async function findByUsername(username) {
-  const result = await pool.query("SELECT * FROM users WHERE username = $1", [
-    username,
-  ]);
+  const result = await pool.query(
+    `SELECT u.*, d.name AS division_name 
+     FROM users u 
+     LEFT JOIN divisions d ON d.id = u.division_id 
+     WHERE u.username = $1`,
+    [username],
+  );
   return result.rows[0];
 }
 
@@ -85,4 +89,34 @@ async function reactivateUser(id) {
   return result.rows[0];
 }
 
-module.exports = { findByUsername, findById, createUser, getAllUsers, getUsersByDivision, deactivateUser, reactivateUser };
+// Update password and must_change_password flag
+async function updatePassword(id, passwordHash, mustChangePassword = false) {
+  const result = await pool.query(
+    `UPDATE users 
+     SET password_hash = $1, must_change_password = $2 
+     WHERE id = $3
+     RETURNING id, full_name, username, role, division_id, must_change_password`,
+    [passwordHash, mustChangePassword, id]
+  );
+  return result.rows[0];
+}
+
+// Update last login timestamp
+async function updateLastLogin(id) {
+  await pool.query(
+    "UPDATE users SET last_login_at = now() WHERE id = $1",
+    [id]
+  );
+}
+
+module.exports = {
+  findByUsername,
+  findById,
+  createUser,
+  getAllUsers,
+  getUsersByDivision,
+  deactivateUser,
+  reactivateUser,
+  updatePassword,
+  updateLastLogin,
+};

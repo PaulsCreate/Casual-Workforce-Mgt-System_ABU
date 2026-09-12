@@ -14,7 +14,7 @@ import {
 import { exportToCSV } from "../utils/exportUtils";
 import SideNavBar from "../components/SideNavBar";
 import MobileHeader from "../components/MobileHeader";
-import abuLogo from "../assets/Logo.png";
+import abuLogo from "../assets/Logo2.png";
 
 const MONTHS = [
   { value: "1",  name: "January"   },
@@ -38,9 +38,9 @@ const Reports = () => {
 
   const [locations, setLocations] = useState([]);
   
-  // Reporting scope: "hostel" | "single_block" | "division_master"
-  const [reportScope, setReportScope] = useState("hostel");
-  const [selectedHostel, setSelectedHostel] = useState("all");
+  // Scope options: "all_hostels" | "hostel" | "single_block"
+  const [reportScope, setReportScope] = useState("all_hostels");
+  const [selectedHostel, setSelectedHostel] = useState("");
   const [selectedLocationId, setSelectedLocationId] = useState("");
 
   const currentYear = new Date().getFullYear();
@@ -62,17 +62,16 @@ const Reports = () => {
     try {
       setError("");
       const locData =
-        user.role === "supervisor"
+        user?.role === "supervisor"
           ? await getLocationsForSupervisor(user.id)
           : await getLocations();
       setLocations(locData);
 
       if (locData.length > 0) {
         setSelectedLocationId(String(locData[0].id));
-        // Default hostel to first hostel if available
         const firstHostel = locData[0].name.includes(" — ")
           ? locData[0].name.split(" — ")[0].trim()
-          : "all";
+          : locData[0].name;
         setSelectedHostel(firstHostel);
       }
     } catch (err) {
@@ -96,7 +95,7 @@ const Reports = () => {
 
   // Available blocks for the selected hostel
   const availableBlocksForHostel = locations.filter((loc) => {
-    if (selectedHostel === "all") return true;
+    if (!selectedHostel) return true;
     const h = loc.name.includes(" — ") ? loc.name.split(" — ")[0].trim() : loc.name;
     return h === selectedHostel;
   });
@@ -109,6 +108,7 @@ const Reports = () => {
     if (reportScope === "hostel") {
       return availableBlocksForHostel.map((l) => Number(l.id));
     }
+    // all_hostels
     return locations.map((l) => Number(l.id));
   };
 
@@ -121,14 +121,21 @@ const Reports = () => {
       setError("");
       setSuccess("");
 
-      if (reportScope === "division_master") {
-        const divId = user?.role === "division_admin" ? user.division_id : null;
-        const data = await getDivisionAggregateReport(divId, Number(selectedMonth), Number(selectedYear));
+      if (reportScope === "all_hostels") {
+        const targetIds = locations.map((l) => Number(l.id));
+        if (targetIds.length === 0) {
+          setReportData(null);
+          return;
+        }
+
+        const data = await generateBatchReport(targetIds, Number(selectedMonth), Number(selectedYear));
         setReportData({
-          scope: "division_master",
-          status: "verified", // Master reports aggregate verified/submitted statuses
+          scope: "all_hostels",
+          status: data.status,
+          statuses: data.statuses || [],
+          location_ids: targetIds,
           workers: data.workers || [],
-          total_workers: data.total_workers || 0,
+          total_workers: data.workers?.length || 0,
         });
       } else if (reportScope === "hostel") {
         const targetIds = getTargetLocationIds();
@@ -143,6 +150,7 @@ const Reports = () => {
           statuses: data.statuses || [],
           location_ids: targetIds,
           workers: data.workers || [],
+          total_workers: data.workers?.length || 0,
         });
       } else {
         // Single block
@@ -154,6 +162,7 @@ const Reports = () => {
           report_id: data.report_id,
           operational_location_id: data.operational_location_id,
           workers: data.workers || [],
+          total_workers: data.workers?.length || 0,
         });
       }
     } catch (err) {
@@ -174,21 +183,22 @@ const Reports = () => {
     setSubmitting(true);
     try {
       setError("");
-      if (reportScope === "hostel") {
-        const targetIds = getTargetLocationIds();
-        const res = await submitBatchReportsApi({
-          operational_location_ids: targetIds,
-          period_month: Number(selectedMonth),
-          period_year: Number(selectedYear),
-        });
-        setSuccess(res.message || `Monthly register submitted for ${selectedHostel}!`);
-      } else {
+      const targetIds = getTargetLocationIds();
+      if (reportScope === "single_block") {
         await submitReportApi({
           operational_location_id: Number(selectedLocationId),
           period_month: Number(selectedMonth),
           period_year: Number(selectedYear),
         });
         setSuccess("Monthly register submitted for verification!");
+      } else {
+        const res = await submitBatchReportsApi({
+          operational_location_ids: targetIds,
+          period_month: Number(selectedMonth),
+          period_year: Number(selectedYear),
+        });
+        const label = reportScope === "all_hostels" ? "all hostels" : selectedHostel;
+        setSuccess(res.message || `Monthly register submitted for ${label}!`);
       }
       loadReport();
     } catch (err) {
@@ -203,15 +213,16 @@ const Reports = () => {
     setSubmitting(true);
     try {
       setError("");
-      if (reportScope === "hostel" && reportData?.statuses) {
+      if (reportData?.statuses && reportData.statuses.length > 0) {
         const pendingIds = reportData.statuses
           .filter((s) => s.status === "submitted")
           .map((s) => s.id);
         if (pendingIds.length > 0) {
           const res = await verifyBatchReportsApi({ verification_ids: pendingIds });
-          setSuccess(res.message || `Verified all blocks in ${selectedHostel}!`);
+          const label = reportScope === "all_hostels" ? "all hostels" : selectedHostel;
+          setSuccess(res.message || `Verified all pending blocks across ${label}!`);
         } else {
-          setSuccess("All blocks in this hostel are already verified.");
+          setSuccess("All blocks are already verified.");
         }
       } else if (reportData?.report_id) {
         await verifyReportApi(reportData.report_id);
@@ -233,7 +244,7 @@ const Reports = () => {
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pageW = doc.internal.pageSize.getWidth();
 
-    // --- Header logo ---
+    // Logo
     try {
       const img = new Image();
       img.src = abuLogo;
@@ -243,77 +254,110 @@ const Reports = () => {
       canvas.height = img.naturalHeight;
       canvas.getContext("2d").drawImage(img, 0, 0);
       const dataUrl = canvas.toDataURL("image/png");
-      doc.addImage(dataUrl, "PNG", pageW / 2 - 15, 8, 30, 30);
+      doc.addImage(dataUrl, "PNG", pageW / 2 - 11, 6, 22, 22);
     } catch (_) {}
 
-    // --- Title ---
-    doc.setFontSize(13);
+    // Title
+    doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 65, 32);
-    doc.text("AHMADU BELLO UNIVERSITY, ZARIA", pageW / 2, 44, { align: "center" });
+    doc.text("AHMADU BELLO UNIVERSITY, ZARIA", pageW / 2, 33, { align: "center" });
 
-    doc.setFontSize(10);
+    doc.setFontSize(9.5);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(60, 60, 60);
-    doc.text("Casual Sanitation Workforce — Monthly Attendance Register", pageW / 2, 50, { align: "center" });
+    doc.text("Casual Sanitation Workforce — Monthly Attendance Register", pageW / 2, 38, { align: "center" });
 
-    // --- Metadata Block ---
-    doc.setFontSize(9);
+    // Metadata Table Block (uses autoTable to guarantee zero overlapping text)
     const scopeName =
-      reportScope === "division_master"
-        ? "All Division Hostels & Units (Master Register)"
+      reportScope === "all_hostels"
+        ? "All Hostels Consolidated (Master Register)"
         : reportScope === "hostel"
         ? `${selectedHostel} (Consolidated Register)`
         : locations.find((l) => String(l.id) === String(selectedLocationId))?.name || "—";
 
     const statusLabel = {
-      verified: "VERIFIED ✓",
+      verified: "VERIFIED & APPROVED ✓",
       submitted: "PENDING VERIFICATION",
-      not_submitted: "DRAFT",
+      not_submitted: "DRAFT (NOT SUBMITTED)",
     };
 
-    const metaRows = [
-      ["Register Scope:", scopeName, "Period:", `${monthName} ${selectedYear}`],
-      ["Working Days in Month:", String(daysInMonth), "Report Status:", statusLabel[reportData.status] || "VERIFIED"],
-      ["Generated By:", user?.username || "—", "Date Generated:", new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })],
-    ];
-
-    let startY = 56;
-    doc.setFillColor(242, 244, 238);
-    doc.rect(14, startY - 1, pageW - 28, metaRows.length * 7 + 3, "F");
-    metaRows.forEach((row, i) => {
-      const y = startY + i * 7 + 5;
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(0, 65, 32);
-      doc.text(row[0], 16, y);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(30, 30, 30);
-      doc.text(row[1], 55, y);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(0, 65, 32);
-      doc.text(row[2], pageW / 2 + 2, y);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(30, 30, 30);
-      doc.text(row[3], pageW / 2 + 38, y);
+    doc.autoTable({
+      startY: 42,
+      body: [
+        [
+          { content: "Register Scope:", styles: { fontStyle: "bold", textColor: [0, 65, 32], cellWidth: 28 } },
+          { content: scopeName, styles: { cellWidth: 68 } },
+          { content: "Period:", styles: { fontStyle: "bold", textColor: [0, 65, 32], cellWidth: 28 } },
+          { content: `${monthName} ${selectedYear}`, styles: { cellWidth: 58 } },
+        ],
+        [
+          { content: "Working Days:", styles: { fontStyle: "bold", textColor: [0, 65, 32] } },
+          { content: `${daysInMonth} Working Days` },
+          { content: "Report Status:", styles: { fontStyle: "bold", textColor: [0, 65, 32] } },
+          { content: statusLabel[reportData.status] || "VERIFIED" },
+        ],
+        [
+          { content: "Generated By:", styles: { fontStyle: "bold", textColor: [0, 65, 32] } },
+          { content: user?.username || "Authorized Officer" },
+          { content: "Date Generated:", styles: { fontStyle: "bold", textColor: [0, 65, 32] } },
+          { content: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) },
+        ],
+      ],
+      theme: "plain",
+      styles: {
+        fontSize: 8,
+        cellPadding: 1.8,
+        textColor: [40, 40, 40],
+        overflow: "linebreak",
+        lineColor: [210, 220, 210],
+        lineWidth: 0.15,
+      },
+      margin: { left: 14, right: 14 },
     });
 
-    startY = startY + metaRows.length * 7 + 8;
+    const startY = (doc.lastAutoTable?.finalY || 62) + 4;
 
-    // --- Table Rows ---
-    const tableBody = reportData.workers.map((item, idx) => [
-      String(idx + 1),
-      item.staff_id,
-      item.full_name,
-      item.location_name || item.unit_name || "—",
-      String(item.days_worked),
-      String(daysInMonth),
-      `${Math.round((item.days_worked / daysInMonth) * 100)}%`,
-      "Approved",
-    ]);
+    // Build grouped Table Rows
+    const tableBody = [];
+    let snCounter = 1;
+
+    // Group sorted by hostel
+    const sortedHostelKeys = Object.keys(workersByHostel).sort();
+
+    sortedHostelKeys.forEach((hostelName) => {
+      const hWorkers = workersByHostel[hostelName] || [];
+      if (reportScope === "all_hostels" && sortedHostelKeys.length > 1) {
+        // Section Header Row
+        tableBody.push([
+          {
+            content: `HOSTEL / STATION: ${hostelName.toUpperCase()} (${hWorkers.length} Workers)`,
+            colSpan: 8,
+            styles: { fillColor: [225, 238, 228], textColor: [0, 65, 32], fontStyle: "bold", halign: "left" },
+          },
+        ]);
+      }
+
+      hWorkers.forEach((item) => {
+        const isCompound = item.location_name && item.location_name.includes(" — ");
+        const blockName = isCompound ? item.location_name.split(" — ")[1].trim() : (item.location_name || "—");
+
+        tableBody.push([
+          String(snCounter++),
+          item.staff_id,
+          item.full_name,
+          blockName,
+          item.national_id_nin || "—",
+          String(item.days_worked),
+          String(daysInMonth),
+          `${Math.round((item.days_worked / daysInMonth) * 100)}%`,
+        ]);
+      });
+    });
 
     doc.autoTable({
       startY,
-      head: [["S/N", "Staff ID", "Worker Full Name", "Location / Block", "Days Present", "Working Days", "Attend. %", "Payment Status"]],
+      head: [["S/N", "Staff ID", "Worker Full Name", "Block / Zone", "National ID (NIN)", "Days Present", "Working Days", "Attend. %"]],
       body: tableBody,
       styles: { fontSize: 8, cellPadding: 2.5, lineColor: [200, 200, 200], lineWidth: 0.2 },
       headStyles: { fillColor: [0, 65, 32], textColor: [255, 255, 255], fontStyle: "bold", halign: "center" },
@@ -321,17 +365,17 @@ const Reports = () => {
         0: { halign: "center", cellWidth: 8 },
         1: { cellWidth: 22, halign: "center" },
         2: { cellWidth: 46 },
-        3: { cellWidth: 42 },
-        4: { halign: "center", cellWidth: 18 },
-        5: { halign: "center", cellWidth: 18 },
+        3: { cellWidth: 36 },
+        4: { halign: "center", cellWidth: 26 },
+        5: { halign: "center", cellWidth: 16 },
         6: { halign: "center", cellWidth: 16 },
-        7: { cellWidth: 22, halign: "center" },
+        7: { halign: "center", cellWidth: 16 },
       },
       alternateRowStyles: { fillColor: [247, 249, 248] },
       margin: { left: 14, right: 14 },
     });
 
-    // --- Summary & Signature ---
+    // Summary & Signatures
     const finalY = (doc.lastAutoTable?.finalY || startY) + 6;
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
@@ -356,7 +400,7 @@ const Reports = () => {
     doc.text("Name: _________________________", pageW - 75, sigY + 11);
     doc.text("Date:  _________________________", pageW - 75, sigY + 17);
 
-    // --- Footers ---
+    // Footers
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
@@ -370,7 +414,7 @@ const Reports = () => {
       );
     }
 
-    const filename = `ABU_REGISTER_${scopeName.replace(/[^a-zA-Z0-9]/g, "_")}_${monthName}_${selectedYear}.pdf`;
+    const filename = `ABU_ATTENDANCE_REGISTER_${scopeName.replace(/[^a-zA-Z0-9]/g, "_")}_${monthName}_${selectedYear}.pdf`;
     doc.save(filename);
   };
 
@@ -379,39 +423,56 @@ const Reports = () => {
     if (!reportData || !reportData.workers || reportData.workers.length === 0) return;
 
     const scopeName =
-      reportScope === "division_master"
-        ? "Division_Master"
+      reportScope === "all_hostels"
+        ? "All_Hostels_Consolidated"
         : reportScope === "hostel"
         ? selectedHostel.replace(/\s+/g, "_")
         : (locations.find((l) => String(l.id) === String(selectedLocationId))?.name || "Location").replace(/\s+/g, "_");
 
-    const filename = `ABU_Payroll_Register_${scopeName}_${monthName}_${selectedYear}.csv`;
+    const filename = `ABU_Attendance_Register_${scopeName}_${monthName}_${selectedYear}.csv`;
 
     const headers = [
       "S/N",
       "Staff ID",
       "Worker Full Name",
-      "Operational Unit",
       "Hostel / Location",
+      "Block / Station",
+      "Phone Number",
+      "National ID (NIN)",
       "Days Worked",
       "Working Days in Month",
       "Attendance Percentage",
       "Period",
-      "Payment Clearance Status",
+      "Register Status",
     ];
 
-    const rows = reportData.workers.map((w, idx) => [
-      idx + 1,
-      w.staff_id,
-      w.full_name,
-      w.unit_name || "Hall Administration Unit",
-      w.location_name || "—",
-      w.days_worked,
-      daysInMonth,
-      `${Math.round((w.days_worked / daysInMonth) * 100)}%`,
-      `${monthName} ${selectedYear}`,
-      reportData.status === "verified" ? "Approved for Payment" : "Pending Verification",
-    ]);
+    let rowIdx = 1;
+    const rows = [];
+    const sortedHostelKeys = Object.keys(workersByHostel).sort();
+
+    sortedHostelKeys.forEach((hostelName) => {
+      const hWorkers = workersByHostel[hostelName] || [];
+      hWorkers.forEach((w) => {
+        const isCompound = w.location_name && w.location_name.includes(" — ");
+        const hostel = isCompound ? w.location_name.split(" — ")[0].trim() : (w.location_name || "—");
+        const block = isCompound ? w.location_name.split(" — ")[1].trim() : (w.location_name || "—");
+
+        rows.push([
+          rowIdx++,
+          w.staff_id,
+          w.full_name,
+          hostel,
+          block,
+          w.phone_number || "—",
+          w.national_id_nin || "—",
+          w.days_worked,
+          daysInMonth,
+          `${Math.round((w.days_worked / daysInMonth) * 100)}%`,
+          `${monthName} ${selectedYear}`,
+          reportData.status === "verified" ? "Verified & Approved" : "Pending Verification",
+        ]);
+      });
+    });
 
     exportToCSV(filename, headers, rows);
   };
@@ -443,8 +504,30 @@ const Reports = () => {
     }
   };
 
+  // Group workers by hostel for structured display
+  const workersByHostel = {};
+  if (reportData?.workers) {
+    reportData.workers.forEach((w) => {
+      const isCompound = w.location_name && w.location_name.includes(" — ");
+      const hostel = isCompound ? w.location_name.split(" — ")[0].trim() : (w.location_name || "General Deployment");
+      if (!workersByHostel[hostel]) workersByHostel[hostel] = [];
+      workersByHostel[hostel].push(w);
+    });
+
+    // Sort workers within each hostel alphabetically by full name
+    Object.keys(workersByHostel).forEach((h) => {
+      workersByHostel[h].sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+    });
+  }
+
   const hasWorkers = reportData && reportData.workers && reportData.workers.length > 0;
   const canExport = hasWorkers;
+
+  const submitButtonLabel = () => {
+    if (reportScope === "all_hostels") return "Submit All Hostels Register";
+    if (reportScope === "hostel") return `Submit Hostel Register (${selectedHostel})`;
+    return "Submit Monthly Register";
+  };
 
   return (
     <div className="bg-background text-on-background font-body-md min-h-screen flex flex-col md:flex-row">
@@ -456,7 +539,7 @@ const Reports = () => {
         <header className="hidden md:flex justify-between items-center w-full px-margin-desktop h-16 bg-surface border-b border-outline-variant sticky top-0 z-[900]">
           <div className="font-headline-sm text-headline-sm font-bold text-primary flex items-center gap-2">
             <span className="material-symbols-outlined text-primary">analytics</span>
-            Monthly Attendance & Payroll Registers
+            Monthly Workforce Attendance Registers
           </div>
           <div className="flex items-center gap-3">
             {reportData && getStatusBadge(reportData.status)}
@@ -473,8 +556,8 @@ const Reports = () => {
               </h1>
               <p className="font-body-md text-on-surface-variant">
                 {monthName} {selectedYear} · {
-                  reportScope === "division_master"
-                    ? "Division-Wide Master Aggregation"
+                  reportScope === "all_hostels"
+                    ? `All Hostels Consolidated (${uniqueHostels.length} hostels, ${reportData?.workers?.length || 0} workers)`
                     : reportScope === "hostel"
                     ? `${selectedHostel} (Consolidated Hostel)`
                     : locations.find((l) => String(l.id) === String(selectedLocationId))?.name || "…"
@@ -487,8 +570,8 @@ const Reports = () => {
               {canExport && (
                 <button
                   onClick={handleExportCSV}
-                  className="bg-white border border-[#2e7d32] text-[#2e7d32] hover:bg-[#e8f5e9] font-semibold text-xs py-2.5 px-4 rounded-lg flex items-center gap-2 transition-colors shadow-2xs"
-                  title="Download spreadsheet for Bursary payroll computations"
+                  className="bg-white border border-primary text-primary hover:bg-primary/5 font-semibold text-xs py-2.5 px-4 rounded-lg flex items-center gap-2 transition-colors shadow-2xs"
+                  title="Download spreadsheet of attendance records"
                 >
                   <span className="material-symbols-outlined text-[18px]">table_view</span>
                   Export Excel (CSV)
@@ -519,7 +602,7 @@ const Reports = () => {
                   ) : (
                     <span className="material-symbols-outlined text-[18px]">publish</span>
                   )}
-                  Submit {reportScope === "hostel" ? `Hostel Register (${selectedHostel})` : "Monthly Register"}
+                  {submitButtonLabel()}
                 </button>
               )}
 
@@ -535,7 +618,7 @@ const Reports = () => {
                   ) : (
                     <span className="material-symbols-outlined text-[18px]">verified</span>
                   )}
-                  Verify & Authorise Register
+                  Verify & Authorise {reportScope === "all_hostels" ? "All Hostels" : "Register"}
                 </button>
               )}
             </div>
@@ -545,13 +628,13 @@ const Reports = () => {
           {error && (
             <div className="p-4 bg-error-container/20 border border-error/30 text-error rounded-xl flex items-center gap-2">
               <span className="material-symbols-outlined">error</span>
-              <p>{error}</p>
+              <p className="font-body-md">{error}</p>
             </div>
           )}
           {success && (
-            <div className="p-4 bg-[#e8f5e9] border border-[#c8e6c9] text-[#1b5e20] rounded-xl flex items-center gap-2">
+            <div className="p-4 bg-primary/10 border border-primary/25 text-primary rounded-xl flex items-center gap-2">
               <span className="material-symbols-outlined">check_circle</span>
-              <p>{success}</p>
+              <p className="font-body-md">{success}</p>
             </div>
           )}
 
@@ -565,26 +648,24 @@ const Reports = () => {
                   Report Scope
                 </label>
                 <select
-                  className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                  className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none font-medium"
                   value={reportScope}
                   onChange={(e) => setReportScope(e.target.value)}
                 >
-                  <option value="hostel">🏢 Consolidated Hostel Register</option>
+                  <option value="all_hostels">🏢 All Hostels Consolidated (Master)</option>
+                  <option value="hostel">🏢 Single Hostel Consolidated</option>
                   <option value="single_block">📍 Single Block / Location</option>
-                  {isAdminTier && (
-                    <option value="division_master">🏛️ Master Division-Wide Register</option>
-                  )}
                 </select>
               </div>
 
-              {/* 2. Hostel or Block Selector */}
+              {/* 2. Specific Hostel or Block Selector (conditional) */}
               {reportScope === "hostel" ? (
                 <div className="space-y-1">
                   <label className="font-label-md text-xs font-bold text-on-surface uppercase tracking-wider block">
-                    Hostel / Unit
+                    Choose Hostel
                   </label>
                   <select
-                    className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                    className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none font-medium"
                     value={selectedHostel}
                     onChange={(e) => setSelectedHostel(e.target.value)}
                   >
@@ -598,7 +679,7 @@ const Reports = () => {
               ) : reportScope === "single_block" ? (
                 <div className="space-y-1">
                   <label className="font-label-md text-xs font-bold text-on-surface uppercase tracking-wider block">
-                    Specific Block
+                    Choose Block / Station
                   </label>
                   <select
                     className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
@@ -615,11 +696,11 @@ const Reports = () => {
               ) : (
                 <div className="space-y-1">
                   <label className="font-label-md text-xs font-bold text-on-surface uppercase tracking-wider block">
-                    Division
+                    Hostels In Master Scope
                   </label>
-                  <div className="p-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-sm font-semibold text-primary flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[18px]">domain</span>
-                    Student Affairs Division (All Hostels)
+                  <div className="p-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-xs font-semibold text-primary flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm">domain</span>
+                    <span>All {uniqueHostels.length} Hostels & Units Combined</span>
                   </div>
                 </div>
               )}
@@ -627,15 +708,17 @@ const Reports = () => {
               {/* 3. Month */}
               <div className="space-y-1">
                 <label className="font-label-md text-xs font-bold text-on-surface uppercase tracking-wider block">
-                  Month
+                  Reporting Month
                 </label>
                 <select
-                  className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                  className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none font-medium"
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
                 >
                   {MONTHS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.name}</option>
+                    <option key={m.value} value={m.value}>
+                      📅 {m.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -643,10 +726,10 @@ const Reports = () => {
               {/* 4. Year */}
               <div className="space-y-1">
                 <label className="font-label-md text-xs font-bold text-on-surface uppercase tracking-wider block">
-                  Year
+                  Academic Year
                 </label>
                 <select
-                  className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                  className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none font-medium"
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(e.target.value)}
                 >
@@ -655,125 +738,230 @@ const Reports = () => {
                   ))}
                 </select>
               </div>
+
             </div>
           </section>
 
-          {/* Roster Table */}
-          <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
-            {loading ? (
-              <div className="text-center py-16 text-on-surface-variant flex flex-col justify-center items-center gap-3">
-                <div className="w-8 h-8 border-3 border-outline-variant border-t-primary rounded-full animate-spin"></div>
-                <span className="font-body-md">Compiling monthly attendance register...</span>
+          {/* Metrics Summary Strip */}
+          {hasWorkers && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-white border border-outline-variant rounded-xl p-4 shadow-2xs">
+                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-bold">Total Workers</p>
+                <p className="text-2xl font-bold text-on-surface mt-1">{reportData.workers.length}</p>
+                <p className="text-[11px] text-on-surface-variant mt-0.5">Active on register</p>
               </div>
-            ) : !hasWorkers ? (
-              <div className="text-center py-16 text-on-surface-variant space-y-2">
-                <span className="material-symbols-outlined text-4xl text-outline">assignment_late</span>
-                <p className="font-semibold text-on-surface">No worker attendance records found</p>
-                <p className="text-xs">No active workers were deployed to this scope during {monthName} {selectedYear}.</p>
+              <div className="bg-white border border-outline-variant rounded-xl p-4 shadow-2xs">
+                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-bold">Total Hostels</p>
+                <p className="text-2xl font-bold text-primary mt-1">{Object.keys(workersByHostel).length}</p>
+                <p className="text-[11px] text-on-surface-variant mt-0.5">Operating stations</p>
               </div>
-            ) : (
-              <div>
-                {/* Table Header Summary */}
-                <div className="bg-surface-container-low px-6 py-3 border-b border-outline-variant flex justify-between items-center text-xs font-semibold text-on-surface-variant">
-                  <span>Showing {reportData.workers.length} worker(s) on register</span>
-                  <span>Working days in {monthName}: <strong>{daysInMonth} days</strong></span>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-surface-container/80 text-on-surface font-bold text-xs uppercase tracking-wider border-b border-outline-variant">
-                        <th className="py-3.5 px-4 w-12 text-center">S/N</th>
-                        <th className="py-3.5 px-4">Staff ID</th>
-                        <th className="py-3.5 px-4">Worker Full Name</th>
-                        <th className="py-3.5 px-4">Location / Block</th>
-                        <th className="py-3.5 px-4 text-center">Days Present</th>
-                        <th className="py-3.5 px-4 text-center">Working Days</th>
-                        <th className="py-3.5 px-4 text-center">Attendance %</th>
-                        <th className="py-3.5 px-4 text-center">Payment Clearance</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-outline-variant/60">
-                      {reportData.workers.map((worker, index) => {
-                        const rate = Math.round((worker.days_worked / daysInMonth) * 100);
-                        return (
-                          <tr key={worker.worker_id || index} className="hover:bg-surface-container-low/60 transition-colors">
-                            <td className="py-3 px-4 text-center font-data-mono text-xs text-on-surface-variant">
-                              {index + 1}
-                            </td>
-                            <td className="py-3 px-4 font-data-mono text-xs font-semibold text-primary">
-                              {worker.staff_id}
-                            </td>
-                            <td className="py-3 px-4 font-semibold text-on-surface">
-                              {worker.full_name}
-                            </td>
-                            <td className="py-3 px-4 text-on-surface-variant text-xs">
-                              {worker.location_name || worker.unit_name || "—"}
-                            </td>
-                            <td className="py-3 px-4 text-center font-bold text-on-surface">
-                              {worker.days_worked}
-                            </td>
-                            <td className="py-3 px-4 text-center text-on-surface-variant">
-                              {daysInMonth}
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-xs ${
-                                rate >= 75 ? "bg-[#e8f5e9] text-[#1b5e20]" : rate >= 50 ? "bg-[#fff9c4] text-[#795b00]" : "bg-[#ffebee] text-[#c62828]"
-                              }`}>
-                                {rate}%
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              <span className="text-xs font-semibold text-primary flex items-center justify-center gap-1">
-                                <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                                Cleared
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Table Footer Summary */}
-                <div className="bg-surface-container-low/60 px-6 py-4 border-t border-outline-variant flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-on-surface-variant">
-                  <div>
-                    <strong>Total Registered Workers:</strong> {reportData.workers.length} &nbsp;·&nbsp; 
-                    <strong>Aggregate Days Worked:</strong> {reportData.workers.reduce((s, w) => s + w.days_worked, 0)} days
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleExportCSV}
-                      className="text-primary hover:underline font-semibold flex items-center gap-1"
-                    >
-                      <span className="material-symbols-outlined text-sm">table_view</span> Download CSV
-                    </button>
-                    &nbsp;|&nbsp;
-                    <button
-                      onClick={handleExportPDF}
-                      className="text-primary hover:underline font-semibold flex items-center gap-1"
-                    >
-                      <span className="material-symbols-outlined text-sm">picture_as_pdf</span> Download PDF
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* Help Tip */}
-          {canExport && (
-            <div className="bg-surface-container border border-outline-variant/50 rounded-xl p-4 flex items-start gap-3">
-              <span className="material-symbols-outlined text-primary mt-0.5">info</span>
-              <div>
-                <p className="font-body-md font-semibold text-on-surface">Ready for Payment Computation & Audit Submission?</p>
-                <p className="font-label-md text-on-surface-variant text-[12px] mt-0.5">
-                  Use <strong>Export Excel (CSV)</strong> to send spreadsheets to the Bursary for payroll math calculations, or <strong>Export PDF</strong> for signed official printouts with university seals.
+              <div className="bg-white border border-outline-variant rounded-xl p-4 shadow-2xs">
+                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-bold">Aggregate Days Worked</p>
+                <p className="text-2xl font-bold text-primary mt-1">
+                  {reportData.workers.reduce((s, w) => s + w.days_worked, 0)}
                 </p>
+                <p className="text-[11px] text-on-surface-variant mt-0.5">Total shift logs</p>
+              </div>
+              <div className="bg-white border border-outline-variant rounded-xl p-4 shadow-2xs">
+                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-bold">Average Attendance</p>
+                <p className="text-2xl font-bold text-secondary mt-1">
+                  {reportData.workers.length > 0
+                    ? Math.round(
+                        (reportData.workers.reduce((s, w) => s + w.days_worked, 0) /
+                          (reportData.workers.length * daysInMonth)) *
+                          100
+                      )
+                    : 0}%
+                </p>
+                <p className="text-[11px] text-on-surface-variant mt-0.5">Workforce presence rate</p>
               </div>
             </div>
           )}
+
+          {/* Register Data Table */}
+          <div className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant">
+                <div className="w-8 h-8 border-2 border-outline border-t-primary rounded-full animate-spin" />
+                <span className="text-xs font-semibold">Generating consolidated monthly attendance register...</span>
+              </div>
+            ) : !hasWorkers ? (
+              <div className="text-center py-16 px-4">
+                <span className="material-symbols-outlined text-4xl text-outline mb-2">event_busy</span>
+                <h3 className="font-bold text-on-surface text-base">No Attendance Records Found</h3>
+                <p className="text-xs text-on-surface-variant mt-1 max-w-md mx-auto">
+                  No workers or attendance data recorded for {monthName} {selectedYear} under the selected scope.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6 p-4 sm:p-6">
+
+                {/* Quick-Jump Hostel Navigation Bar when multiple hostels are present */}
+                {Object.keys(workersByHostel).length > 1 && (
+                  <div className="bg-surface-container-low border border-outline-variant rounded-xl p-3.5 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
+                      <span className="material-symbols-outlined text-sm">domain</span>
+                      <span>Hostel Quick-Index ({Object.keys(workersByHostel).length} Hostels & Units)</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {Object.entries(workersByHostel)
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([hName, hWorkers], idx) => (
+                          <a
+                            key={hName}
+                            href={`#hostel-section-${idx}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-outline-variant hover:border-primary hover:text-primary transition-all text-xs font-semibold text-on-surface shadow-2xs group"
+                          >
+                            <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold group-hover:bg-primary group-hover:text-white transition-colors">
+                              {idx + 1}
+                            </span>
+                            <span>{hName}</span>
+                            <span className="px-1.5 py-0.2 rounded-full bg-surface-container text-on-surface-variant text-[10px]">
+                              {hWorkers.length}
+                            </span>
+                          </a>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Render workers grouped by Hostel with clear visual demarcation */}
+                {Object.entries(workersByHostel)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([hostelName, hostelWorkers], hostelIdx) => {
+                    const hostelDaysWorked = hostelWorkers.reduce((s, w) => s + w.days_worked, 0);
+                    const hostelAvgRate =
+                      hostelWorkers.length > 0 && daysInMonth > 0
+                        ? Math.round((hostelDaysWorked / (hostelWorkers.length * daysInMonth)) * 100)
+                        : 0;
+
+                    // Extract unique blocks for this hostel
+                    const uniqueBlocks = Array.from(
+                      new Set(
+                        hostelWorkers.map((w) => {
+                          const isCompound = w.location_name && w.location_name.includes(" — ");
+                          return isCompound ? w.location_name.split(" — ")[1].trim() : (w.location_name || "—");
+                        })
+                      )
+                    );
+
+                    return (
+                      <div
+                        key={hostelName}
+                        id={`hostel-section-${hostelIdx}`}
+                        className="border-2 border-outline-variant/80 rounded-2xl overflow-hidden shadow-xs hover:border-primary/40 transition-colors scroll-mt-20 bg-white"
+                      >
+                        {/* Distinct Hostel Section Header Banner */}
+                        <div className="bg-gradient-to-r from-surface-container via-surface-container-low to-white px-5 py-4 border-b-2 border-outline-variant flex flex-wrap items-center justify-between gap-3 border-l-6 border-l-primary">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+                              {hostelIdx + 1 < 10 ? `0${hostelIdx + 1}` : hostelIdx + 1}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-base text-on-surface flex items-center gap-1.5">
+                                  <span className="material-symbols-outlined text-primary text-lg">apartment</span>
+                                  {hostelName}
+                                </h3>
+                                <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-xs border border-primary/20">
+                                  {hostelWorkers.length} Worker{hostelWorkers.length !== 1 ? "s" : ""}
+                                </span>
+                              </div>
+                              <p className="text-xs text-on-surface-variant mt-0.5">
+                                Operating Blocks: <span className="font-medium text-on-surface">{uniqueBlocks.join(", ") || "General"}</span>
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Hostel Metrics Pills */}
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <div className="px-3 py-1 rounded-lg bg-surface-container border border-outline-variant/60 text-on-surface flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-sm text-primary">done_all</span>
+                              <span>Total Shifts: <strong className="text-primary font-bold">{hostelDaysWorked} days</strong></span>
+                            </div>
+                            <div className="px-3 py-1 rounded-lg bg-surface-container border border-outline-variant/60 text-on-surface flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-sm text-primary">percent</span>
+                              <span>Avg Presence: <strong className="font-bold text-primary">{hostelAvgRate}%</strong></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead className="bg-surface-container-low border-b border-outline-variant font-bold text-on-surface">
+                              <tr>
+                                <th className="py-3 px-3 text-center w-12">S/N</th>
+                                <th className="py-3 px-3">Staff ID</th>
+                                <th className="py-3 px-3">Worker Full Name</th>
+                                <th className="py-3 px-3">Block / Station</th>
+                                <th className="py-3 px-3">National ID (NIN)</th>
+                                <th className="py-3 px-3">Phone Contact</th>
+                                <th className="py-3 px-3 text-center">Days Worked</th>
+                                <th className="py-3 px-3 text-center">Working Days</th>
+                                <th className="py-3 px-3 text-center">Attendance %</th>
+                                <th className="py-3 px-3 text-center">Register Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-outline-variant/50">
+                              {hostelWorkers.map((w, idx) => {
+                                const isCompound = w.location_name && w.location_name.includes(" — ");
+                                const blockName = isCompound ? w.location_name.split(" — ")[1].trim() : (w.location_name || "—");
+                                const rate = daysInMonth > 0 ? Math.round((w.days_worked / daysInMonth) * 100) : 0;
+
+                                return (
+                                  <tr key={w.worker_id || idx} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-2.5 px-3 text-center font-mono text-on-surface-variant">{idx + 1}</td>
+                                    <td className="py-2.5 px-3 font-mono font-semibold text-primary">{w.staff_id}</td>
+                                    <td className="py-2.5 px-3 font-semibold text-on-surface">{w.full_name}</td>
+                                    <td className="py-2.5 px-3 text-on-surface-variant font-medium">{blockName}</td>
+                                    <td className="py-2.5 px-3 font-mono text-on-surface-variant">{w.national_id_nin || "—"}</td>
+                                    <td className="py-2.5 px-3 text-on-surface-variant">{w.phone_number || "—"}</td>
+                                    <td className="py-2.5 px-3 text-center font-bold text-primary">{w.days_worked}</td>
+                                    <td className="py-2.5 px-3 text-center font-mono text-on-surface-variant">{daysInMonth}</td>
+                                    <td className="py-2.5 px-3 text-center font-semibold">
+                                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${rate >= 75 ? "bg-[#e8f5e9] text-[#1b5e20]" : "bg-[#fff9c4] text-[#795b00]"}`}>
+                                        {rate}%
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      <span className={`inline-flex items-center gap-1 font-bold text-[11px] ${reportData.status === "verified" ? "text-[#1b5e20]" : "text-[#795b00]"}`}>
+                                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                        {reportData.status === "verified" ? "Verified" : "Pending"}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                            <tfoot className="bg-surface-container-low border-t-2 border-outline-variant font-bold text-on-surface text-xs">
+                              <tr>
+                                <td colSpan={6} className="py-2.5 px-4 text-right text-on-surface-variant">
+                                  Subtotal for {hostelName}:
+                                </td>
+                                <td className="py-2.5 px-3 text-center text-[#1b5e20] font-bold">
+                                  {hostelDaysWorked} days
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-mono text-on-surface-variant">
+                                  {daysInMonth}
+                                </td>
+                                <td className="py-2.5 px-3 text-center text-primary font-bold">
+                                  {hostelAvgRate}% avg
+                                </td>
+                                <td className="py-2.5 px-3 text-center text-on-surface-variant text-[11px]">
+                                  {hostelWorkers.length} staff
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
 
         </main>
       </div>

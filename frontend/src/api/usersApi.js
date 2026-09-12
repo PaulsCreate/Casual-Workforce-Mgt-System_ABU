@@ -30,3 +30,8 @@ export const getAuditLogs = async () => {
   const res = await apiClient.get("/audit-logs");
   return res.data;
 };
+
+export const resetUserPasswordApi = async (id, data = {}) => {
+  const res = await apiClient.post(`/users/${id}/reset-password`, data);
+  return res.data;
+};

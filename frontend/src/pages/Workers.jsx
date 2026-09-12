@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getWorkers, createWorker } from "../api/workersApi";
+import { getWorkers, createWorker, uploadWorkerPhoto } from "../api/workersApi";
 import { getDivisions, getUnits, getLocations } from "../api/hierarchyApi";
 import SideNavBar from "../components/SideNavBar";
 import MobileHeader from "../components/MobileHeader";
+import WorkerImportModal from "../components/WorkerImportModal";
+import BulkPhotoUploadModal from "../components/BulkPhotoUploadModal";
+import { getImageUrl } from "../utils/imageUrl";
 
 const Workers = () => {
   const { user: currentUser } = useAuth();
@@ -18,12 +21,21 @@ const Workers = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Create Modal State
+  // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isBulkPhotoOpen, setIsBulkPhotoOpen] = useState(false);
+
+  // Single create fields
   const [staffId, setStaffId] = useState("");
   const [fullName, setFullName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
+  const [nationalIdNin, setNationalIdNin] = useState("");
+  const [nextOfKinName, setNextOfKinName] = useState("");
+  const [nextOfKinPhone, setNextOfKinPhone] = useState("");
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
 
   // Deployment fields
   const [divisions, setDivisions] = useState([]);
@@ -43,8 +55,12 @@ const Workers = () => {
     try {
       setLoading(true);
       setError("");
-      const data = await getWorkers();
-      setWorkers(data);
+      const [workerData, locData] = await Promise.all([
+        getWorkers(),
+        getLocations().catch(() => []),
+      ]);
+      setWorkers(workerData);
+      setLocations(locData);
     } catch (err) {
       console.error(err);
       setError("Failed to fetch workforce directory");
@@ -66,6 +82,11 @@ const Workers = () => {
       setPhoneNumber("");
       setAppointmentDate(new Date().toISOString().slice(0, 10));
       setAssignEffectiveFrom(new Date().toISOString().slice(0, 10));
+      setNationalIdNin("");
+      setNextOfKinName("");
+      setNextOfKinPhone("");
+      setPhotoFile(null);
+      setPhotoPreview(null);
       setAssignUnitId("");
       setAssignLocId("");
       setLocations([]);
@@ -129,6 +150,9 @@ const Workers = () => {
         full_name: fullName.trim(),
         phone_number: phoneNumber.trim() || null,
         appointment_date: appointmentDate,
+        national_id_nin: nationalIdNin.trim() || null,
+        next_of_kin_name: nextOfKinName.trim() || null,
+        next_of_kin_phone: nextOfKinPhone.trim() || null,
       };
 
       if (assignDivId && assignUnitId && assignLocId) {
@@ -138,7 +162,19 @@ const Workers = () => {
         payload.effective_date = assignEffectiveFrom || appointmentDate;
       }
 
-      await createWorker(payload);
+      const newWorker = await createWorker(payload);
+
+      // If a passport photo was selected, upload it immediately
+      if (photoFile && newWorker?.id) {
+        try {
+          const formData = new FormData();
+          formData.append("photo", photoFile);
+          await uploadWorkerPhoto(newWorker.id, formData);
+        } catch (photoErr) {
+          console.warn("Worker created but photo upload failed:", photoErr);
+        }
+      }
+
       setSuccess("Worker registered and configured successfully!");
       setIsModalOpen(false);
       loadWorkers();
@@ -170,11 +206,12 @@ const Workers = () => {
 
         {/* Desktop Header */}
         <header className="hidden md:flex justify-between items-center w-full px-margin-desktop h-16 bg-surface border-b border-outline-variant sticky top-0 z-[900]">
-          <div className="font-headline-sm text-headline-sm font-bold text-primary">
+          <div className="font-headline-sm text-headline-sm font-bold text-primary flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">groups</span>
             Workforce Management
           </div>
           <div className="text-on-surface-variant font-label-md text-label-md">
-            Casual Employees Directory
+            Casual Employees Directory ({workers.length} registered)
           </div>
         </header>
 
@@ -182,23 +219,48 @@ const Workers = () => {
         <main className="p-margin-mobile md:p-margin-desktop flex-1 max-w-container-max w-full mx-auto space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-outline-variant pb-4 gap-4">
             <div>
-              <h2 className="font-display-lg text-display-lg text-on-surface mb-2 font-bold">
+              <h2 className="font-display-lg text-display-lg text-on-surface mb-1 font-bold">
                 Worker Directory
               </h2>
-              <p className="font-body-lg text-on-surface-variant">
-                Manage registered casual workers, check assignments, and
-                initiate transfers.
+              <p className="font-body-md text-on-surface-variant">
+                Manage registered casual staff, upload passport photos, view deployment histories, and bulk import rosters.
               </p>
             </div>
-            <button
-              onClick={handleOpenRegisterModal}
-              className="bg-primary text-on-primary hover:bg-[#0E4526] transition-colors rounded-lg py-2.5 px-4 font-label-md text-label-md flex items-center gap-2 shadow-sm"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                person_add
-              </span>
-              Register Worker
-            </button>
+            
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Bulk Import Button */}
+              {(isAdmin || isDivAdmin) && (
+                <button
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="bg-white border border-primary text-primary hover:bg-primary/5 transition-colors rounded-lg py-2.5 px-4 font-semibold text-xs flex items-center gap-2 shadow-2xs"
+                  title="Upload Excel or CSV roster"
+                >
+                  <span className="material-symbols-outlined text-[18px]">upload_file</span>
+                  Bulk Import (CSV)
+                </button>
+              )}
+
+              {/* Bulk Photo Upload Button */}
+              {(isAdmin || isDivAdmin) && (
+                <button
+                  onClick={() => setIsBulkPhotoOpen(true)}
+                  className="bg-white border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary transition-colors rounded-lg py-2.5 px-4 font-semibold text-xs flex items-center gap-2 shadow-2xs"
+                  title="Upload passport photos for multiple workers at once"
+                >
+                  <span className="material-symbols-outlined text-[18px]">photo_library</span>
+                  Upload Photos
+                </button>
+              )}
+
+              {/* Single Register Button */}
+              <button
+                onClick={handleOpenRegisterModal}
+                className="bg-primary text-white hover:bg-[#0E4526] transition-colors rounded-lg py-2.5 px-4 font-semibold text-xs flex items-center gap-2 shadow-sm"
+              >
+                <span className="material-symbols-outlined text-[18px]">person_add</span>
+                Register Worker
+              </button>
+            </div>
           </div>
 
           {/* Success / Error Alerts */}
@@ -209,7 +271,7 @@ const Workers = () => {
             </div>
           )}
           {success && (
-            <div className="p-4 bg-[#e8f5e9] border border-[#c8e6c9] text-[#1b5e20] rounded-xl flex items-center gap-2">
+            <div className="p-4 bg-primary/10 border border-primary/25 text-primary rounded-xl flex items-center gap-2">
               <span className="material-symbols-outlined">check_circle</span>
               <p className="font-body-md">{success}</p>
             </div>
@@ -223,7 +285,7 @@ const Workers = () => {
               </span>
               <input
                 className="w-full pl-10 pr-4 py-2 bg-white border border-[#E4E7E6] rounded font-body-md text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors"
-                placeholder="Search by name, ID, or location..."
+                placeholder="Search by name, staff ID, or location..."
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -236,7 +298,7 @@ const Workers = () => {
                   filter_list
                 </span>
                 <select
-                  className="bg-white border border-[#E4E7E6] rounded px-3 py-1.5 focus:border-primary focus:ring-0 text-on-surface"
+                  className="bg-white border border-[#E4E7E6] rounded px-3 py-1.5 focus:border-primary focus:ring-0 text-on-surface text-xs font-semibold"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                 >
@@ -254,22 +316,22 @@ const Workers = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-[#F7F9F8] border-b border-[#E4E7E6]">
-                    <th className="py-3.5 px-6 font-label-md text-label-md text-on-surface-variant font-semibold whitespace-nowrap">
+                    <th className="py-3.5 px-6 font-label-md text-xs uppercase tracking-wider text-on-surface-variant font-bold whitespace-nowrap">
                       Staff ID
                     </th>
-                    <th className="py-3.5 px-6 font-label-md text-label-md text-on-surface-variant font-semibold whitespace-nowrap">
-                      Full Name
+                    <th className="py-3.5 px-6 font-label-md text-xs uppercase tracking-wider text-on-surface-variant font-bold whitespace-nowrap">
+                      Worker Name & Photo
                     </th>
-                    <th className="py-3.5 px-6 font-label-md text-label-md text-on-surface-variant font-semibold whitespace-nowrap">
-                      Current Division / Unit
+                    <th className="py-3.5 px-6 font-label-md text-xs uppercase tracking-wider text-on-surface-variant font-bold whitespace-nowrap">
+                      Station / Hostel
                     </th>
-                    <th className="py-3.5 px-6 font-label-md text-label-md text-on-surface-variant font-semibold whitespace-nowrap">
-                      Location
+                    <th className="py-3.5 px-6 font-label-md text-xs uppercase tracking-wider text-on-surface-variant font-bold whitespace-nowrap">
+                      National ID (NIN)
                     </th>
-                    <th className="py-3.5 px-6 font-label-md text-label-md text-on-surface-variant font-semibold whitespace-nowrap">
+                    <th className="py-3.5 px-6 font-label-md text-xs uppercase tracking-wider text-on-surface-variant font-bold whitespace-nowrap">
                       Status
                     </th>
-                    <th className="py-3.5 px-6 font-label-md text-label-md text-on-surface-variant font-semibold whitespace-nowrap text-right">
+                    <th className="py-3.5 px-6 font-label-md text-xs uppercase tracking-wider text-on-surface-variant font-bold whitespace-nowrap text-right">
                       Actions
                     </th>
                   </tr>
@@ -316,29 +378,50 @@ const Workers = () => {
                           className="hover:bg-surface-container-low transition-colors group cursor-pointer"
                           onClick={() => navigate(`/workers/${worker.id}`)}
                         >
-                          <td className="py-3 px-6 font-data-mono text-data-mono text-on-surface-variant">
+                          <td className="py-3 px-6 font-data-mono text-xs font-semibold text-primary">
                             {worker.staff_id}
                           </td>
                           <td className="py-3 px-6 font-semibold flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
+                            {/* Passport thumbnail / avatar */}
+                            {worker.photo_url ? (
+                              <img
+                                src={getImageUrl(worker.photo_url)}
+                                alt={worker.full_name}
+                                className="w-9 h-9 rounded-full object-cover border-2 border-primary/30 shrink-0 bg-white"
+                                onError={(e) => {
+                                  e.target.style.display = "none";
+                                  e.target.nextSibling.style.display = "flex";
+                                }}
+                              />
+                            ) : null}
+                            <div
+                              className={`w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 ${worker.photo_url ? "hidden" : "flex"}`}
+                            >
                               {initials}
                             </div>
-                            {worker.full_name}
+                            <div>
+                              <div className="text-on-surface text-sm font-semibold">{worker.full_name}</div>
+                              {worker.phone_number && (
+                                <div className="text-[11px] text-on-surface-variant font-normal">{worker.phone_number}</div>
+                              )}
+                            </div>
                           </td>
-                          <td className="py-3 px-6 text-on-surface-variant">
-                            {worker.division_name
-                              ? `${worker.division_name} / ${worker.unit_name}`
-                              : "No active assignment"}
+                          <td className="py-3 px-6 text-on-surface-variant text-xs">
+                            {worker.location_name || (
+                              <span className="text-outline italic">Unassigned</span>
+                            )}
                           </td>
-                          <td className="py-3 px-6 text-on-surface-variant">
-                            {worker.location_name || "Unassigned"}
+                          <td className="py-3 px-6 text-on-surface-variant text-xs">
+                            <span className="font-mono font-semibold text-xs text-on-surface">
+                              {worker.national_id_nin || <span className="text-outline italic font-sans">—</span>}
+                            </span>
                           </td>
                           <td className="py-3 px-6">
                             <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full font-label-md text-label-md ${
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full font-bold text-xs ${
                                 worker.status === "active"
-                                  ? "bg-primary-container/10 text-[#145A32]"
-                                  : "bg-error/10 text-error"
+                                  ? "bg-primary/10 text-primary border border-primary/20"
+                                  : "bg-error/10 text-error border border-error/20"
                               }`}
                             >
                               {worker.status === "active"
@@ -352,9 +435,10 @@ const Workers = () => {
                           >
                             <button
                               onClick={() => navigate(`/workers/${worker.id}`)}
-                              className="bg-surface border border-outline-variant hover:border-primary text-primary px-3 py-1.5 rounded transition-all text-xs font-semibold"
+                              className="bg-white border border-outline-variant hover:border-primary text-primary px-3 py-1.5 rounded-lg transition-all text-xs font-semibold flex items-center gap-1 ml-auto shadow-2xs"
                             >
-                              View File
+                              <span className="material-symbols-outlined text-[15px]">person</span>
+                              View Profile
                             </button>
                           </td>
                         </tr>
@@ -368,7 +452,19 @@ const Workers = () => {
         </main>
       </div>
 
-      {/* Register Worker Modal Dialog */}
+      {/* Bulk Import Modal */}
+      <WorkerImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={(msg) => {
+          setSuccess(msg);
+          loadWorkers();
+        }}
+        existingWorkers={workers}
+        locations={locations}
+      />
+
+      {/* Register Single Worker Modal Dialog */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-white border border-outline-variant rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
@@ -383,7 +479,7 @@ const Workers = () => {
                     Register New Casual Worker
                   </h3>
                   <p className="text-xs text-on-surface-variant">
-                    Add worker credentials and optionally assign their operational post.
+                    Add worker credentials, identity information, and assign their operational post.
                   </p>
                 </div>
               </div>
@@ -406,6 +502,66 @@ const Workers = () => {
                       1. Worker Information
                     </h4>
                   </div>
+
+                  {/* Optional Passport Photo Picker */}
+                  <div className="flex items-center gap-4 p-3 bg-surface-container-low rounded-xl border border-outline-variant/60 mb-4">
+                    <div className="relative w-14 h-14 rounded-full overflow-hidden bg-surface-container-high border border-outline-variant flex items-center justify-center shrink-0">
+                      {photoPreview ? (
+                        <img
+                          src={photoPreview}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="material-symbols-outlined text-on-surface-variant/60 text-2xl">
+                          person
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-on-surface">
+                        Passport Photo <span className="text-[11px] font-normal text-on-surface-variant">(Optional)</span>
+                      </p>
+                      <p className="text-[11px] text-on-surface-variant truncate">
+                        {photoFile ? photoFile.name : "JPEG, PNG or WebP up to 5MB"}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <label className="cursor-pointer inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-dark bg-white border border-outline-variant px-2.5 py-1 rounded-lg hover:bg-surface transition-colors shadow-2xs">
+                          <span className="material-symbols-outlined text-[15px]">photo_camera</span>
+                          {photoFile ? "Change Photo" : "Choose Photo"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.size > 5 * 1024 * 1024) {
+                                  setError("Photo exceeds 5MB limit");
+                                  return;
+                                }
+                                setPhotoFile(file);
+                                setPhotoPreview(URL.createObjectURL(file));
+                              }
+                            }}
+                          />
+                        </label>
+                        {photoFile && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPhotoFile(null);
+                              setPhotoPreview(null);
+                            }}
+                            className="text-xs text-error hover:text-error-dark font-medium px-2 py-1 rounded hover:bg-error-container/20 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="font-label-md text-xs font-semibold text-on-surface block">
@@ -443,7 +599,7 @@ const Workers = () => {
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. +234 803 123 4567"
+                        placeholder="e.g. 08031234567"
                         className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
                         value={phoneNumber}
                         onChange={(e) => setPhoneNumber(e.target.value)}
@@ -463,6 +619,44 @@ const Workers = () => {
                         disabled={submitting}
                         required
                       />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-label-md text-xs font-semibold text-on-surface block">
+                        National ID (NIN)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="11-digit NIN"
+                        className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                        value={nationalIdNin}
+                        onChange={(e) => setNationalIdNin(e.target.value)}
+                        disabled={submitting}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-label-md text-xs font-semibold text-on-surface block">
+                        Next of Kin (Name & Phone)
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Name"
+                          className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary outline-none"
+                          value={nextOfKinName}
+                          onChange={(e) => setNextOfKinName(e.target.value)}
+                          disabled={submitting}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Phone"
+                          className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary outline-none"
+                          value={nextOfKinPhone}
+                          onChange={(e) => setNextOfKinPhone(e.target.value)}
+                          disabled={submitting}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -485,7 +679,7 @@ const Workers = () => {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Division Field (Only editable by general administrator) */}
+                    {/* Division Field */}
                     {isAdmin && (
                       <div className="space-y-1">
                         <label className="font-label-md text-xs font-semibold text-on-surface block">
@@ -623,6 +817,14 @@ const Workers = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Bulk Photo Upload Modal */}
+      {isBulkPhotoOpen && (
+        <BulkPhotoUploadModal
+          onClose={() => setIsBulkPhotoOpen(false)}
+          onDone={() => { loadWorkers(); setIsBulkPhotoOpen(false); }}
+        />
       )}
     </div>
   );

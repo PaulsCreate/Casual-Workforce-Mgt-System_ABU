@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
-  getWorker,
+  getWorkerDossier,
   updateWorker,
   createAssignment,
-  getWorkerAssignmentHistory,
-  getWorkerCurrentAssignment,
+  uploadWorkerPhoto,
 } from "../api/workersApi";
 import { createTransfer } from "../api/transfersApi";
 import { getDivisions, getUnits, getLocations } from "../api/hierarchyApi";
 import { useAuth } from "../context/AuthContext";
+import { getImageUrl } from "../utils/imageUrl";
 import SideNavBar from "../components/SideNavBar";
 import MobileHeader from "../components/MobileHeader";
 
@@ -20,12 +20,12 @@ const WorkerProfile = () => {
   const isAdmin = currentUser?.role === "administrator";
   const isDivAdmin = currentUser?.role === "division_admin";
 
-  const [worker, setWorker] = useState(null);
-  const [currentAssignment, setCurrentAssignment] = useState(null);
-  const [history, setHistory] = useState([]);
+  const [dossierData, setDossierData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Modals state
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
@@ -49,10 +49,15 @@ const WorkerProfile = () => {
   const [transLocId, setTransLocId] = useState("");
   const [transReason, setTransReason] = useState("");
 
-  // Edit profile states
-  const [editName, setEditName] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [editStatus, setEditStatus] = useState("active");
+  // Edit profile form state
+  const [editForm, setEditForm] = useState({
+    full_name: "",
+    phone_number: "",
+    status: "active",
+    national_id_nin: "",
+    next_of_kin_name: "",
+    next_of_kin_phone: "",
+  });
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -60,21 +65,18 @@ const WorkerProfile = () => {
     try {
       setLoading(true);
       setError("");
-      // Fetch worker details (our optimized model query returns division/location names if assigned)
-      const wData = await getWorker(id);
-      setWorker(wData);
-
-      // Fetch active assignment
-      try {
-        const curAssign = await getWorkerCurrentAssignment(id);
-        setCurrentAssignment(curAssign);
-      } catch (err) {
-        setCurrentAssignment(null);
+      const data = await getWorkerDossier(id);
+      setDossierData(data);
+      if (data?.worker) {
+        setEditForm({
+          full_name: data.worker.full_name || "",
+          phone_number: data.worker.phone_number || "",
+          status: data.worker.status || "active",
+          national_id_nin: data.worker.national_id_nin || "",
+          next_of_kin_name: data.worker.next_of_kin_name || "",
+          next_of_kin_phone: data.worker.next_of_kin_phone || "",
+        });
       }
-
-      // Fetch assignment history
-      const histData = await getWorkerAssignmentHistory(id);
-      setHistory(histData);
     } catch (err) {
       console.error(err);
       setError("Failed to load worker profile");
@@ -87,7 +89,36 @@ const WorkerProfile = () => {
     loadProfile();
   }, [id]);
 
-  // Load dropdown lists for assignment/transfer
+  // Handle Photo Upload
+  const handlePhotoSelected = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image size exceeds 5MB limit. Please choose a smaller photo.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("photo", file);
+
+    setUploadingPhoto(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      await uploadWorkerPhoto(id, formData);
+      setSuccess("Passport photo updated successfully!");
+      loadProfile();
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.error || "Failed to upload photo");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  // Open Assign Modal
   const handleOpenAssignModal = async () => {
     try {
       setError("");
@@ -103,7 +134,9 @@ const WorkerProfile = () => {
           getUnits(currentUser.division_id),
         ]);
         setDivisions(divData);
-        const myDiv = divData.find((d) => Number(d.id) === Number(currentUser.division_id));
+        const myDiv = divData.find(
+          (d) => Number(d.id) === Number(currentUser.division_id),
+        );
         setDivisionName(myDiv?.name || "Your Division");
         setUnits(unitData);
       } else {
@@ -120,12 +153,18 @@ const WorkerProfile = () => {
     }
   };
 
+  // Open Transfer Modal
   const handleOpenTransferModal = async () => {
-    if (!currentAssignment) return;
+    const currentAssign = dossierData?.assignments?.find(
+      (a) => !a.effective_to,
+    );
+    if (!currentAssign) {
+      setError("Worker must have an active assignment to request a transfer.");
+      return;
+    }
     try {
       setError("");
-      // Get units in same division (transfers cannot cross division boundaries)
-      const unitData = await getUnits(currentAssignment.division_id);
+      const unitData = await getUnits(currentAssign.division_id);
       setUnits(unitData);
       setTransUnitId("");
       setTransLocId("");
@@ -169,20 +208,18 @@ const WorkerProfile = () => {
     }
   };
 
-  // Submit profile edit
+  // Submit Profile Edit
   const handleEditProfileSubmit = async (e) => {
     e.preventDefault();
-    if (!editName.trim()) return;
+    if (!editForm.full_name.trim()) {
+      setError("Worker full name is required");
+      return;
+    }
     setSubmitting(true);
     try {
       setError("");
-      const updated = await updateWorker(id, {
-        full_name: editName,
-        phone_number: editPhone,
-        status: editStatus,
-      });
-      setWorker(updated);
-      setSuccess("Profile updated successfully!");
+      await updateWorker(id, editForm);
+      setSuccess("Worker profile updated successfully!");
       setIsEditProfileModalOpen(false);
       loadProfile();
     } catch (err) {
@@ -192,7 +229,7 @@ const WorkerProfile = () => {
     }
   };
 
-  // Submit initial assignment
+  // Submit Assignment
   const handleAssignSubmit = async (e) => {
     e.preventDefault();
     if (!assignDivId || !assignUnitId || !assignLocId || !assignEffectiveFrom) {
@@ -219,7 +256,7 @@ const WorkerProfile = () => {
     }
   };
 
-  // Submit transfer
+  // Submit Transfer
   const handleTransferSubmit = async (e) => {
     e.preventDefault();
     if (!transUnitId || !transLocId) {
@@ -229,6 +266,9 @@ const WorkerProfile = () => {
     setSubmitting(true);
     try {
       setError("");
+      const currentAssign = dossierData?.assignments?.find(
+        (a) => !a.effective_to,
+      );
       await createTransfer({
         worker_id: Number(id),
         to_operational_unit_id: Number(transUnitId),
@@ -236,11 +276,15 @@ const WorkerProfile = () => {
         reason: transReason,
       });
 
-      const isInternal = Number(transUnitId) === currentAssignment.operational_unit_id;
+      const isInternal =
+        currentAssign &&
+        Number(transUnitId) === currentAssign.operational_unit_id;
       if (isInternal) {
-        setSuccess("Internal transfer executed immediately!");
+        setSuccess("Internal station transfer executed immediately!");
       } else {
-        setSuccess("Inter-unit transfer requested! Awaiting administrator approval.");
+        setSuccess(
+          "Inter-unit transfer requested! Awaiting administrator approval in Approvals page.",
+        );
       }
 
       setIsTransferModalOpen(false);
@@ -252,10 +296,31 @@ const WorkerProfile = () => {
     }
   };
 
-  // Check if transfer would be internal or inter-unit
+  const worker = dossierData?.worker;
+  const assignments = dossierData?.assignments || [];
+  const activeAssignment = assignments.find((a) => !a.effective_to);
+  const stats = dossierData?.attendance_stats || {
+    total_present: 0,
+    total_recorded_days: 0,
+    total_months_active: 0,
+  };
+  const attRate =
+    stats.total_recorded_days > 0
+      ? Math.round((stats.total_present / stats.total_recorded_days) * 100)
+      : 0;
+
   const isSelectedTransferInternal =
-    currentAssignment &&
-    Number(transUnitId) === currentAssignment.operational_unit_id;
+    activeAssignment &&
+    Number(transUnitId) === activeAssignment.operational_unit_id;
+
+  const initials = worker?.full_name
+    ? worker.full_name
+        .split("")
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : "CW";
 
   return (
     <div className="bg-background text-on-background font-body-md min-h-screen flex flex-col md:flex-row">
@@ -266,385 +331,546 @@ const WorkerProfile = () => {
         {/* Desktop Header */}
         <header className="hidden md:flex justify-between items-center w-full px-margin-desktop h-16 bg-surface border-b border-outline-variant sticky top-0 z-[900]">
           <div className="flex items-center gap-2 text-on-surface-variant font-label-md text-label-md">
-            <Link to="/workers" className="hover:text-primary transition-colors flex items-center gap-1">
-              <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-              Back to Workforce
+            <Link
+              to="/workers"
+              className="hover:text-primary transition-colors flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                arrow_back
+              </span>
+              Back to Workforce Directory
             </Link>
           </div>
-          <div className="text-on-surface-variant font-label-md text-label-md">
-            Employee Profile
+          <div className="flex items-center gap-3">
+            <span className="text-on-surface-variant font-label-md text-xs font-mono">
+              Staff ID: {worker?.staff_id || "…"}
+            </span>
           </div>
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-margin-mobile md:p-margin-desktop bg-surface">
+        <main className="p-margin-mobile md:p-margin-desktop flex-1 max-w-container-max w-full mx-auto space-y-6">
           {loading ? (
             <div className="min-h-[400px] flex items-center justify-center">
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-10 h-10 border-4 border-outline border-t-primary rounded-full animate-spin"></div>
-                <span className="text-on-surface-variant text-sm font-semibold">Loading profile...</span>
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-10 h-10 border-4 border-outline border-t-primary rounded-full animate-spin" />
+                <span className="text-on-surface-variant text-sm font-semibold">
+                  Loading worker profile...
+                </span>
               </div>
             </div>
           ) : !worker ? (
-            <div className="p-margin-desktop text-center bg-white border border-outline-variant rounded-xl">
-              <span className="material-symbols-outlined text-5xl text-outline mb-2">person_off</span>
-              <h3 className="font-title-lg font-bold text-on-surface">Worker File Not Found</h3>
-              <p className="text-on-surface-variant mt-1">Please confirm the reference link.</p>
-              <Link to="/workers" className="text-primary hover:underline font-semibold mt-4 block">
-                Go back to workforce directory
+            <div className="p-12 text-center bg-white border border-outline-variant rounded-2xl shadow-sm">
+              <span className="material-symbols-outlined text-5xl text-outline mb-2">
+                person_off
+              </span>
+              <h3 className="font-bold text-on-surface text-lg">
+                Worker File Not Found
+              </h3>
+              <p className="text-on-surface-variant text-sm mt-1">
+                Please confirm the reference ID.
+              </p>
+              <Link
+                to="/workers"
+                className="text-primary hover:underline font-semibold text-sm mt-4 inline-block"
+              >
+                Return to Workforce Directory
               </Link>
             </div>
           ) : (
-            <div className="max-w-container-max mx-auto space-y-6">
-              {/* Success / Error Alerts */}
+            <div className="space-y-6 animate-fade-in">
+              {/* Feedback Alerts */}
               {error && (
-                <div className="p-4 bg-error-container/20 border border-error/30 text-error rounded-xl flex items-center gap-2">
-                  <span className="material-symbols-outlined">error</span>
-                  <p className="font-body-md">{error}</p>
+                <div className="p-4 bg-error/10 border border-error/30 text-error rounded-xl flex items-center gap-2 text-sm">
+                  <span className="material-symbols-outlined text-[18px]">
+                    error
+                  </span>
+                  <p>{error}</p>
                 </div>
               )}
               {success && (
-                <div className="p-4 bg-[#e8f5e9] border border-[#c8e6c9] text-[#1b5e20] rounded-xl flex items-center gap-2">
-                  <span className="material-symbols-outlined">check_circle</span>
-                  <p className="font-body-md">{success}</p>
+                <div className="p-4 bg-primary/10 border border-primary/25 text-primary rounded-xl flex items-center gap-2 text-sm font-medium">
+                  <span className="material-symbols-outlined text-[18px]">
+                    check_circle
+                  </span>
+                  <p>{success}</p>
                 </div>
               )}
 
-              {/* Profile Card Block */}
-              <div className="bg-white border border-outline-variant rounded-xl p-6 md:p-8 shadow-sm flex flex-col md:flex-row gap-6 md:items-center">
-                <div className="relative shrink-0">
-                  <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-primary/10 border-4 border-surface shadow-sm flex items-center justify-center font-bold text-3xl text-primary">
-                    {worker.full_name
-                      ?.split(" ")
-                      .map((n) => n[0])
-                      .join("")
-                      .substring(0, 2)
-                      .toUpperCase()}
+              {/* 1. Header Profile Banner */}
+              <div className="bg-white border border-outline-variant rounded-2xl p-6 md:p-8 shadow-sm flex flex-col md:flex-row gap-6 items-center md:items-start justify-between">
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  {/* Passport Photo with Upload Trigger */}
+                  <div className="relative group shrink-0">
+                    {worker.photo_url ? (
+                      <img
+                        src={getImageUrl(worker.photo_url)}
+                        alt={worker.full_name}
+                        className="w-28 h-28 rounded-2xl object-cover border-2 border-primary shadow-sm bg-white"
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                          e.target.nextSibling.style.display = "flex";
+                        }}
+                      />
+                    ) : null}
+
+                    <div
+                      className={`w-28 h-28 rounded-2xl bg-gradient-to-br from-primary to-primary-container text-white font-bold text-3xl flex items-center justify-center border-2 border-primary shadow-sm ${
+                        worker.photo_url ? "hidden" : "flex"
+                      }`}
+                    >
+                      {initials}
+                    </div>
+
+                    {/* Camera Upload Overlay */}
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingPhoto}
+                      className="absolute inset-0 rounded-2xl bg-black/50 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:opacity-0"
+                      title="Upload new passport photo"
+                    >
+                      <span className="material-symbols-outlined text-2xl">
+                        {uploadingPhoto ? "sync" : "photo_camera"}
+                      </span>
+                      <span className="text-[10px] font-semibold mt-1">
+                        {uploadingPhoto ? "Saving…" : "Update Photo"}
+                      </span>
+                    </button>
+
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handlePhotoSelected}
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                    />
+                  </div>
+
+                  {/* Worker Title & Metadata */}
+                  <div className="text-center sm:text-left space-y-2">
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
+                      <h1 className="font-bold text-2xl md:text-3xl text-on-surface">
+                        {worker.full_name}
+                      </h1>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                          worker.status === "active"
+                            ? "bg-primary/10 text-primary border-primary/20"
+                            : "bg-error/10 text-error border-error/20"
+                        }`}
+                      >
+                        {worker.status === "active"
+                          ? "Active Staff"
+                          : "Inactive"}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                      <span className="font-data-mono text-xs font-semibold bg-surface-container-high px-3 py-1 rounded-lg border border-outline-variant/60 text-on-surface">
+                        ID: {worker.staff_id}
+                      </span>
+                      {worker.phone_number && (
+                        <span className="text-xs text-on-surface-variant flex items-center gap-1 bg-surface-container-low px-2.5 py-1 rounded-lg border border-outline-variant/40">
+                          <span className="material-symbols-outlined text-sm">
+                            call
+                          </span>
+                          {worker.phone_number}
+                        </span>
+                      )}
+                      {worker.national_id_nin && (
+                        <span className="text-xs font-mono text-primary bg-primary/5 px-2.5 py-1 rounded-lg border border-primary/20">
+                          NIN: {worker.national_id_nin}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="flex-1">
-                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <h1 className="font-headline-md text-headline-md text-on-surface font-bold">
-                          {worker.full_name}
-                        </h1>
-                        <span
-                          className={`px-3 py-0.5 rounded-full font-label-md text-label-md border ${
-                            worker.status === "active"
-                              ? "bg-primary-container/10 text-[#145A32] border-[#145A32]/30"
-                              : "bg-error/10 text-error border-error/30"
-                          }`}
-                        >
-                          {worker.status === "active" ? "Active" : "Inactive"}
+
+                {/* Primary Action Buttons */}
+                <div className="flex flex-wrap gap-2.5 shrink-0 justify-center">
+                  <button
+                    onClick={() => setIsEditProfileModalOpen(true)}
+                    className="px-4 py-2.5 border border-outline-variant hover:border-primary text-on-surface hover:text-primary rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 bg-surface hover:bg-surface-container-low"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      edit
+                    </span>
+                    Edit Details
+                  </button>
+
+                  {activeAssignment ? (
+                    <button
+                      onClick={handleOpenTransferModal}
+                      className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        transfer_within_a_station
+                      </span>
+                      Request Transfer
+                    </button>
+                  ) : null}
+
+                  <button
+                    onClick={handleOpenAssignModal}
+                    className="px-4 py-2.5 bg-primary hover:bg-[#0E4526] text-white rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      assignment_ind
+                    </span>
+                    {activeAssignment ? "Reassign Station" : "Deploy Worker"}
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Three-Column Dossier Information Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Active Deployment Card */}
+                <div className="bg-white border border-outline-variant rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2.5 text-primary border-b border-outline-variant/60 pb-3">
+                    <span className="material-symbols-outlined text-xl">
+                      location_on
+                    </span>
+                    <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider">
+                      Active Station
+                    </h3>
+                  </div>
+                  {activeAssignment ? (
+                    <div className="space-y-2.5 text-xs">
+                      <div>
+                        <p className="text-on-surface-variant">
+                          Assigned Location / Block
+                        </p>
+                        <p className="font-bold text-on-surface text-sm mt-0.5">
+                          {activeAssignment.location_name}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-on-surface-variant">
+                          Operational Unit
+                        </p>
+                        <p className="font-semibold text-on-surface">
+                          {activeAssignment.unit_name}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-on-surface-variant">Division</p>
+                        <p className="font-semibold text-on-surface">
+                          {activeAssignment.division_name}
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-outline-variant/40">
+                        <span className="text-[11px] text-on-surface-variant">
+                          Effective Since:{" "}
+                          <strong className="font-mono text-on-surface">
+                            {activeAssignment.effective_from}
+                          </strong>
                         </span>
                       </div>
-                      <div className="font-data-mono text-data-mono text-on-surface-variant bg-surface-container-low inline-block px-3.5 py-1 rounded border border-outline-variant/50 mb-3">
-                        Staff ID: {worker.staff_id}
-                      </div>
                     </div>
-                    {/* Action buttons */}
-                    <div className="shrink-0 flex flex-wrap gap-2">
+                  ) : (
+                    <div className="py-6 text-center text-on-surface-variant text-xs">
+                      <span className="material-symbols-outlined text-3xl text-outline mb-1">
+                        wrong_location
+                      </span>
+                      <p className="italic">No active duty station.</p>
                       <button
-                        onClick={() => {
-                          setEditName(worker.full_name);
-                          setEditPhone(worker.phone_number || "");
-                          setEditStatus(worker.status);
-                          setIsEditProfileModalOpen(true);
-                        }}
-                        className="bg-surface border border-outline-variant text-on-surface hover:bg-surface-container-high px-4 py-2 rounded-lg font-semibold text-body-md transition-colors flex items-center gap-1 shadow-sm"
+                        onClick={handleOpenAssignModal}
+                        className="mt-3 px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-[#0E4526]"
                       >
-                        <span className="material-symbols-outlined text-[18px]">edit</span>
-                        Edit Status
+                        Deploy Now
                       </button>
-                      {currentAssignment ? (
-                        <button
-                          onClick={handleOpenTransferModal}
-                          className="bg-primary text-on-primary hover:bg-[#0E4526] px-4 py-2 rounded-lg font-semibold text-body-md transition-colors flex items-center gap-1 shadow-sm"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">
-                            transfer_within_a_station
-                          </span>
-                          Transfer Worker
-                        </button>
-                      ) : (
-                        <button
-                          onClick={handleOpenAssignModal}
-                          className="bg-primary text-on-primary hover:bg-[#0E4526] px-4 py-2 rounded-lg font-semibold text-body-md transition-colors flex items-center gap-1 shadow-sm"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">
-                            assignment_ind
-                          </span>
-                          Deploy Worker
-                        </button>
-                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Identity & Documentation Card */}
+                <div className="bg-white border border-outline-variant rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2.5 text-secondary border-b border-outline-variant/60 pb-3">
+                    <span className="material-symbols-outlined text-xl">
+                      badge
+                    </span>
+                    <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider">
+                      Identity & Records
+                    </h3>
+                  </div>
+                  <div className="space-y-2.5 text-xs">
+                    <div>
+                      <p className="text-on-surface-variant">
+                        National Identity Number (NIN)
+                      </p>
+                      <p className="font-mono font-bold text-on-surface mt-0.5">
+                        {worker.national_id_nin || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">
+                        Institutional Staff ID
+                      </p>
+                      <p className="font-mono font-bold text-primary">
+                        {worker.staff_id || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">
+                        Employment Status
+                      </p>
+                      <p className="font-semibold text-on-surface capitalize">
+                        {worker.status || "Active"}
+                      </p>
+                    </div>
+                    <div className="pt-2 border-t border-outline-variant/40">
+                      <span className="text-[11px] text-on-surface-variant">
+                        Enrollment Date:{" "}
+                        <strong className="font-mono text-on-surface">
+                          {worker.created_at?.slice(0, 10) || "—"}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Emergency & Next of Kin Card */}
+                <div className="bg-white border border-outline-variant rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2.5 text-tertiary border-b border-outline-variant/60 pb-3">
+                    <span className="material-symbols-outlined text-xl">
+                      contact_emergency
+                    </span>
+                    <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider">
+                      Next of Kin
+                    </h3>
+                  </div>
+                  <div className="space-y-2.5 text-xs">
+                    <div>
+                      <p className="text-on-surface-variant">
+                        Emergency Contact Name
+                      </p>
+                      <p className="font-bold text-on-surface mt-0.5">
+                        {worker.next_of_kin_name || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-on-surface-variant">
+                        Emergency Phone Number
+                      </p>
+                      <p className="font-semibold text-on-surface">
+                        {worker.next_of_kin_phone || "—"}
+                      </p>
+                    </div>
+                    <div className="pt-2 border-t border-outline-variant/40">
+                      <p className="text-[11px] text-on-surface-variant">
+                        Attendance Rate:{" "}
+                        <strong className="text-primary font-bold">
+                          {attRate}%
+                        </strong>{" "}
+                        ({stats.total_present} shifts worked)
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Main Grid Detail */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Current assignment & Contact */}
-                <div className="lg:col-span-7 flex flex-col gap-6">
-                  {/* Current assignment block */}
-                  <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1.5 h-full bg-primary"></div>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2.5 bg-primary-container rounded-lg text-on-primary-container">
-                        <span className="material-symbols-outlined">location_on</span>
-                      </div>
-                      <div>
-                        <h2 className="font-title-lg text-title-lg text-on-surface font-semibold">
-                          Current Deployment
-                        </h2>
-                        <p className="font-label-md text-on-surface-variant text-[11px] uppercase tracking-wider">
-                          Active Duty Station
-                        </p>
-                      </div>
-                    </div>
-
-                    {currentAssignment ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8">
-                        <div>
-                          <p className="font-label-md text-on-surface-variant text-[10px] uppercase tracking-wider mb-1">
-                            Division
-                          </p>
-                          <p className="font-body-lg text-on-surface font-semibold flex items-center gap-2">
-                            <span className="material-symbols-outlined text-outline-variant text-[18px]">
-                              account_balance
-                            </span>
-                            {worker.division_name}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="font-label-md text-on-surface-variant text-[10px] uppercase tracking-wider mb-1">
-                            Unit
-                          </p>
-                          <p className="font-body-lg text-on-surface font-semibold flex items-center gap-2">
-                            <span className="material-symbols-outlined text-outline-variant text-[18px]">
-                              cleaning_services
-                            </span>
-                            {worker.unit_name}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="font-label-md text-on-surface-variant text-[10px] uppercase tracking-wider mb-1">
-                            Location
-                          </p>
-                          <p className="font-body-lg text-on-surface font-semibold flex items-center gap-2">
-                            <span className="material-symbols-outlined text-outline-variant text-[18px]">
-                              school
-                            </span>
-                            {worker.location_name}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="font-label-md text-on-surface-variant text-[10px] uppercase tracking-wider mb-1">
-                            Assigned Supervisor
-                          </p>
-                          <p className="font-body-lg text-on-surface font-semibold flex items-center gap-2">
-                            <span className="material-symbols-outlined text-outline-variant text-[18px]">
-                              badge
-                            </span>
-                            ID: {currentAssignment.supervisor_id}
-                          </p>
-                        </div>
-                        <div className="sm:col-span-2 pt-4 border-t border-outline-variant flex justify-between items-center text-on-surface-variant text-xs">
-                          <span className="font-data-mono text-data-mono flex items-center gap-1.5">
-                            <span className="material-symbols-outlined text-sm">calendar_today</span>
-                            Effective From: {currentAssignment.effective_from}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-6">
-                        <span className="material-symbols-outlined text-4xl text-outline mb-2">
-                          report_problem
-                        </span>
-                        <p className="text-on-surface-variant italic">
-                          This worker is currently unassigned to any location. They cannot be logged for attendance.
-                        </p>
-                        <button
-                          onClick={handleOpenAssignModal}
-                          className="mt-4 bg-primary text-on-primary hover:bg-[#0E4526] px-4 py-2 rounded-lg font-semibold text-xs transition-colors inline-flex items-center gap-1"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">add</span>
-                          Deploy Now
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Personal details */}
-                  <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm">
-                    <h3 className="font-title-lg text-title-lg text-on-surface font-bold mb-4">
-                      Contact & Appointment
+              {/* 3. Assignment & Transfer History Timeline */}
+              <div className="bg-white border border-outline-variant rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-outline-variant pb-3">
+                  <div className="flex items-center gap-2 text-primary font-bold text-sm">
+                    <span className="material-symbols-outlined text-xl">
+                      history
+                    </span>
+                    <h3 className="uppercase tracking-wider">
+                      Deployment & Relocation History
                     </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="flex items-start gap-3">
-                        <span className="material-symbols-outlined text-outline-variant mt-0.5">call</span>
-                        <div>
-                          <p className="font-body-md text-on-surface">
-                            {worker.phone_number || "Not provided"}
-                          </p>
-                          <p className="font-label-md text-on-surface-variant text-[10px]">
-                            Primary Mobile
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <span className="material-symbols-outlined text-outline-variant mt-0.5">
-                          calendar_today
-                        </span>
-                        <div>
-                          <p className="font-body-md text-on-surface">
-                            {worker.appointment_date}
-                          </p>
-                          <p className="font-label-md text-on-surface-variant text-[10px]">
-                            Date of Appointment
-                          </p>
-                        </div>
-                      </div>
-                    </div>
                   </div>
+                  <span className="text-xs font-mono text-on-surface-variant">
+                    {assignments.length} Record
+                    {assignments.length !== 1 ? "s" : ""}
+                  </span>
                 </div>
 
-                {/* Assignment History Timeline */}
-                <div className="lg:col-span-5">
-                  <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm h-full flex flex-col">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-primary">history</span>
-                        <h2 className="font-title-lg text-title-lg text-on-surface font-bold">
-                          Assignment History
-                        </h2>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 relative pl-4 border-l-2 border-surface-variant space-y-6">
-                      {history.length === 0 ? (
-                        <p className="text-on-surface-variant italic text-xs py-4 pl-2">
-                          No history logged.
-                        </p>
-                      ) : (
-                        history.map((hist, idx) => {
-                          const isCurrent = hist.effective_to === null;
-                          return (
-                            <div key={hist.id} className="relative">
-                              <div
-                                className={`absolute -left-[22px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
-                                  isCurrent ? "bg-primary" : "bg-outline-variant"
-                                }`}
-                              />
-                              <div className="font-data-mono text-data-mono text-[12px] text-on-surface-variant mb-1 font-semibold">
-                                {hist.effective_from} to {hist.effective_to || "Present"}
-                              </div>
-                              <div
-                                className={`p-3 rounded-lg border ${
-                                  isCurrent
-                                    ? "bg-surface-container border-primary/20"
-                                    : "bg-surface-container-lowest border-outline-variant/60"
+                {assignments.length === 0 ? (
+                  <div className="py-8 text-center text-on-surface-variant text-xs italic">
+                    No historical assignments recorded yet.
+                  </div>
+                ) : (
+                  <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-outline-variant">
+                    {assignments.map((a, idx) => {
+                      const isActive = !a.effective_to;
+                      return (
+                        <div key={a.id || idx} className="relative group">
+                          {/* Dot indicator */}
+                          <div
+                            className={`absolute -left-[27px] top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-2xs ${
+                              isActive
+                                ? "bg-primary ring-4 ring-primary/20"
+                                : "bg-outline"
+                            }`}
+                          />
+                          <div className="bg-surface-container-lowest border border-outline-variant/80 rounded-xl p-4 space-y-1.5 hover:border-primary/40 transition-colors">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <h4 className="font-bold text-sm text-on-surface">
+                                {a.location_name}
+                              </h4>
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                                  isActive
+                                    ? "bg-primary/10 text-primary border border-primary/20"
+                                    : "bg-surface-container-high text-on-surface-variant"
                                 }`}
                               >
-                                <p className="font-body-md font-bold text-on-surface">
-                                  Deployment ID: #{hist.id}
-                                </p>
-                                <p className="font-label-md text-on-surface-variant text-[11px] mt-0.5">
-                                  Supervisor User ID: {hist.supervisor_id}
-                                </p>
-                                {hist.transfer_id && (
-                                  <p className="text-[10px] font-data-mono text-secondary mt-1">
-                                    Via Transfer Ref: #{hist.transfer_id}
-                                  </p>
-                                )}
-                              </div>
+                                {isActive
+                                  ? "Active Station"
+                                  : "Past Assignment"}
+                              </span>
                             </div>
-                          );
-                        })
-                      )}
-                    </div>
+                            <p className="text-xs text-on-surface-variant font-medium">
+                              {a.unit_name} · {a.division_name}
+                            </p>
+                            <div className="flex items-center gap-3 text-[11px] text-on-surface-variant font-mono pt-1">
+                              <span>
+                                From: <strong>{a.effective_from}</strong>
+                              </span>
+                              <span>
+                                To:{" "}
+                                <strong>{a.effective_to || "Present"}</strong>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
+                )}
               </div>
             </div>
           )}
-        </div>
+        </main>
       </div>
 
-      {/* Edit Worker Status Modal */}
-      {isEditProfileModalOpen && worker && (
-        <div className="fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4">
-          <div className="bg-white border border-outline-variant rounded-xl shadow-lg w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-surface border-b border-outline-variant px-6 py-4 flex justify-between items-center">
-              <h3 className="font-title-lg text-title-lg text-on-surface font-semibold">
-                Edit Worker File
-              </h3>
+      {/* ── Transfer Request Modal ─────────────────────────────────────── */}
+      {isTransferModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center shrink-0 border border-amber-500/20">
+                  <span className="material-symbols-outlined text-2xl">
+                    transfer_within_a_station
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-on-surface text-base">
+                    Request Worker Transfer
+                  </h3>
+                  <p className="text-xs text-on-surface-variant font-mono">
+                    Staff: {worker?.full_name}
+                  </p>
+                </div>
+              </div>
               <button
-                onClick={() => setIsEditProfileModalOpen(false)}
-                className="text-on-surface-variant hover:bg-surface-container-high p-1 rounded"
+                onClick={() => setIsTransferModalOpen(false)}
+                className="text-outline hover:text-on-surface transition-colors"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form onSubmit={handleEditProfileSubmit} className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="font-label-md text-label-md text-on-surface block">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  disabled={submitting}
-                  required
-                />
-              </div>
 
-              <div className="space-y-1">
-                <label className="font-label-md text-label-md text-on-surface block">
-                  Phone Number
-                </label>
-                <input
-                  type="text"
-                  className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface"
-                  value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                  disabled={submitting}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-label-md text-label-md text-on-surface block">
-                  Employment Status
+            <form onSubmit={handleTransferSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-on-surface mb-1">
+                  Destination Unit <span className="text-red-500">*</span>
                 </label>
                 <select
-                  className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface"
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value)}
-                  disabled={submitting}
+                  value={transUnitId}
+                  onChange={(e) => handleTransferUnitChange(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
                 >
-                  <option value="active">Active (On Duty)</option>
-                  <option value="inactive">Inactive (Terminated / Resigned)</option>
+                  <option value="">Select target operational unit</option>
+                  {units.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-outline-variant mt-6">
+              <div>
+                <label className="block text-xs font-semibold text-on-surface mb-1">
+                  Destination Location / Block{" "}
+                  <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={transLocId}
+                  onChange={(e) => setTransLocId(e.target.value)}
+                  disabled={!transUnitId}
+                  required
+                  className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
+                >
+                  <option value="">Select target location</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-on-surface mb-1">
+                  Administrative Reason / Ref
+                </label>
+                <textarea
+                  value={transReason}
+                  onChange={(e) => setTransReason(e.target.value)}
+                  placeholder="e.g. Relocated to Ramat Hall Block B per sanitation redistribution memo"
+                  rows={3}
+                  className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              {transUnitId && (
+                <div
+                  className={`p-3 rounded-xl text-xs border ${
+                    isSelectedTransferInternal
+                      ? "bg-primary/5 border-primary/20 text-primary"
+                      : "bg-amber-50 border-amber-200 text-amber-800"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                    <span className="material-symbols-outlined text-[16px]">
+                      {isSelectedTransferInternal ? "bolt" : "gavel"}
+                    </span>
+                    <span>
+                      {isSelectedTransferInternal
+                        ? "Internal Reallocation"
+                        : "Inter-Unit Transfer"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    {isSelectedTransferInternal
+                      ? "Same operational unit: will execute and update attendance records immediately."
+                      : "Crosses unit boundaries: will be submitted to the Transfer Approvals queue for administrative authorization."}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsEditProfileModalOpen(false)}
-                  className="px-4 py-2 border border-outline-variant hover:bg-surface-container rounded text-body-md"
-                  disabled={submitting}
+                  onClick={() => setIsTransferModalOpen(false)}
+                  className="px-4 py-2 border border-outline-variant text-on-surface rounded-xl text-xs font-semibold hover:bg-surface-container transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-primary text-white hover:bg-[#0E4526] rounded text-body-md font-semibold disabled:opacity-50"
                   disabled={submitting}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  {submitting ? "Saving..." : "Save Changes"}
+                  {submitting && (
+                    <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  )}
+                  <span>Submit Transfer</span>
                 </button>
               </div>
             </form>
@@ -652,64 +878,77 @@ const WorkerProfile = () => {
         </div>
       )}
 
-      {/* Deploy / Assign Worker Modal */}
+      {/* ── Assign / Deploy Modal ─────────────────────────────────────── */}
       {isAssignModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4">
-          <div className="bg-white border border-outline-variant rounded-xl shadow-lg w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-surface border-b border-outline-variant px-6 py-4 flex justify-between items-center">
-              <h3 className="font-title-lg text-title-lg text-on-surface font-semibold">
-                Deploy Worker (Initial Assignment)
-              </h3>
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                  <span className="material-symbols-outlined text-2xl">
+                    assignment_ind
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-on-surface text-base">
+                    {activeAssignment
+                      ? "Reassign Duty Station"
+                      : "Deploy Worker to Station"}
+                  </h3>
+                  <p className="text-xs text-on-surface-variant font-mono">
+                    Staff: {worker?.full_name}
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={() => setIsAssignModalOpen(false)}
-                className="text-on-surface-variant hover:bg-surface-container-high p-1 rounded"
+                className="text-outline hover:text-on-surface transition-colors"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form onSubmit={handleAssignSubmit} className="p-6 space-y-4">
-              {isAdmin ? (
-                <div className="space-y-1">
-                  <label className="font-label-md text-label-md text-on-surface block">
-                    Select Division *
-                  </label>
+
+            <form onSubmit={handleAssignSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-on-surface mb-1">
+                  Division <span className="text-red-500">*</span>
+                </label>
+                {isDivAdmin ? (
+                  <input
+                    type="text"
+                    disabled
+                    value={divisionName}
+                    className="w-full px-3 py-2 bg-surface-container border border-outline-variant rounded-xl text-xs text-on-surface"
+                  />
+                ) : (
                   <select
-                    className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface"
                     value={assignDivId}
                     onChange={(e) => handleAssignDivChange(e.target.value)}
-                    disabled={submitting}
                     required
+                    className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
                   >
-                    <option value="">Choose Division...</option>
+                    <option value="">Select division</option>
                     {divisions.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
                       </option>
                     ))}
                   </select>
-                </div>
-              ) : (
-                <div className="p-3 bg-secondary/10 border border-secondary/20 rounded-lg flex items-center justify-between">
-                  <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Division</span>
-                  <span className="text-sm font-bold text-secondary flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[16px]">domain</span>
-                    {divisionName || "Student Affairs Division"}
-                  </span>
-                </div>
-              )}
+                )}
+              </div>
 
-              <div className="space-y-1">
-                <label className="font-label-md text-label-md text-on-surface block">
-                  Select Unit *
+              <div>
+                <label className="block text-xs font-semibold text-on-surface mb-1">
+                  Operational Unit <span className="text-red-500">*</span>
                 </label>
                 <select
-                  className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface disabled:bg-surface-container-low"
                   value={assignUnitId}
                   onChange={(e) => handleAssignUnitChange(e.target.value)}
-                  disabled={submitting || (isAdmin && !assignDivId)}
+                  disabled={!assignDivId}
                   required
+                  className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
                 >
-                  <option value="">{isAdmin && !assignDivId ? "Select Division first..." : "Choose Unit..."}</option>
+                  <option value="">Select unit</option>
                   {units.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
@@ -718,87 +957,56 @@ const WorkerProfile = () => {
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-label-md text-label-md text-on-surface block">
-                  Select Location *
+              <div>
+                <label className="block text-xs font-semibold text-on-surface mb-1">
+                  Location / Block <span className="text-red-500">*</span>
                 </label>
                 <select
-                  className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface disabled:bg-surface-container-low"
                   value={assignLocId}
                   onChange={(e) => setAssignLocId(e.target.value)}
-                  disabled={submitting || !assignUnitId}
+                  disabled={!assignUnitId}
                   required
+                  className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
                 >
-                  <option value="">{!assignUnitId ? "Select Unit first..." : "Choose Block / Zone..."}</option>
-                  {(() => {
-                    const groups = {};
-                    const ungrouped = [];
-                    locations.forEach((loc) => {
-                      if (loc.name.includes(" — ")) {
-                        const [hostel, block] = loc.name.split(" — ");
-                        if (!groups[hostel]) groups[hostel] = [];
-                        groups[hostel].push({ ...loc, blockName: block });
-                      } else {
-                        ungrouped.push(loc);
-                      }
-                    });
-
-                    const hasGroups = Object.keys(groups).length > 0;
-                    if (!hasGroups) {
-                      return locations.map((l) => (
-                        <option key={l.id} value={l.id}>{l.name}</option>
-                      ));
-                    }
-
-                    return (
-                      <>
-                        {ungrouped.map((l) => (
-                          <option key={l.id} value={l.id}>{l.name}</option>
-                        ))}
-                        {Object.entries(groups).map(([hostelName, locs]) => (
-                          <optgroup key={hostelName} label={`📍 ${hostelName}`}>
-                            {locs.map((l) => (
-                              <option key={l.id} value={l.id}>
-                                {l.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </>
-                    );
-                  })()}
+                  <option value="">Select location</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-label-md text-label-md text-on-surface block">
-                  Effective From Date *
+              <div>
+                <label className="block text-xs font-semibold text-on-surface mb-1">
+                  Effective From <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
-                  className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface"
                   value={assignEffectiveFrom}
                   onChange={(e) => setAssignEffectiveFrom(e.target.value)}
-                  disabled={submitting}
                   required
+                  className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary font-mono"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-outline-variant mt-6">
+              <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsAssignModalOpen(false)}
-                  className="px-4 py-2 border border-outline-variant hover:bg-surface-container rounded text-body-md"
-                  disabled={submitting}
+                  className="px-4 py-2 border border-outline-variant text-on-surface rounded-xl text-xs font-semibold hover:bg-surface-container transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-primary text-white hover:bg-[#0E4526] rounded text-body-md font-semibold disabled:opacity-50"
                   disabled={submitting}
+                  className="px-5 py-2 bg-primary hover:bg-[#0E4526] text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  {submitting ? "Deploying..." : "Confirm Deployment"}
+                  {submitting && (
+                    <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  )}
+                  <span>Confirm Assignment</span>
                 </button>
               </div>
             </form>
@@ -806,158 +1014,159 @@ const WorkerProfile = () => {
         </div>
       )}
 
-      {/* Transfer Worker Modal */}
-      {isTransferModalOpen && currentAssignment && (
-        <div className="fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4">
-          <div className="bg-white border border-outline-variant rounded-xl shadow-lg w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-surface border-b border-outline-variant px-6 py-4 flex justify-between items-center">
-              <h3 className="font-title-lg text-title-lg text-on-surface font-semibold">
-                Transfer Deployment
-              </h3>
+      {/* ── Edit Profile Modal ────────────────────────────────────────── */}
+      {isEditProfileModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                  <span className="material-symbols-outlined text-2xl">
+                    edit_note
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-on-surface text-base">
+                    Edit Worker Details
+                  </h3>
+                  <p className="text-xs text-on-surface-variant font-mono">
+                    Staff ID: {worker?.staff_id}
+                  </p>
+                </div>
+              </div>
               <button
-                onClick={() => setIsTransferModalOpen(false)}
-                className="text-on-surface-variant hover:bg-surface-container-high p-1 rounded"
+                onClick={() => setIsEditProfileModalOpen(false)}
+                className="text-outline hover:text-on-surface transition-colors"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form onSubmit={handleTransferSubmit} className="p-6 space-y-4">
-              <div className="bg-surface-container-low p-3 rounded border border-outline-variant/60 space-y-1">
-                <p className="font-label-md text-on-surface-variant text-[10px] uppercase font-bold tracking-wide">
-                  Current Assignment
-                </p>
-                <p className="font-body-md text-on-surface font-semibold">
-                  {worker.division_name} &gt; {worker.unit_name} &gt; {worker.location_name}
-                </p>
-              </div>
 
-              <div className="space-y-1">
-                <label className="font-label-md text-label-md text-on-surface block">
-                  Select Destination Unit *
-                </label>
-                <select
-                  className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface"
-                  value={transUnitId}
-                  onChange={(e) => handleTransferUnitChange(e.target.value)}
-                  disabled={submitting}
-                  required
-                >
-                  <option value="">Choose Unit...</option>
-                  {units.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-label-md text-label-md text-on-surface block">
-                  Select Destination Location *
-                </label>
-                <select
-                  className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface"
-                  value={transLocId}
-                  onChange={(e) => setTransLocId(e.target.value)}
-                  disabled={submitting || !transUnitId}
-                  required
-                >
-                  <option value="">Choose Location...</option>
-                  {(() => {
-                    const groups = {};
-                    const ungrouped = [];
-                    locations.forEach((loc) => {
-                      if (loc.name.includes(" — ")) {
-                        const [hostel, block] = loc.name.split(" — ");
-                        if (!groups[hostel]) groups[hostel] = [];
-                        groups[hostel].push({ ...loc, blockName: block });
-                      } else {
-                        ungrouped.push(loc);
-                      }
-                    });
-
-                    const hasGroups = Object.keys(groups).length > 0;
-                    if (!hasGroups) {
-                      return locations.map((l) => (
-                        <option key={l.id} value={l.id}>{l.name}</option>
-                      ));
+            <form onSubmit={handleEditProfileSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface mb-1">
+                    Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.full_name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, full_name: e.target.value })
                     }
-
-                    return (
-                      <>
-                        {ungrouped.map((l) => (
-                          <option key={l.id} value={l.id}>{l.name}</option>
-                        ))}
-                        {Object.entries(groups).map(([hostelName, locs]) => (
-                          <optgroup key={hostelName} label={`📍 ${hostelName}`}>
-                            {locs.map((l) => (
-                              <option key={l.id} value={l.id}>
-                                {l.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </>
-                    );
-                  })()}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-label-md text-label-md text-on-surface block">
-                  Reason for Transfer
-                </label>
-                <textarea
-                  rows="3"
-                  className="w-full p-2 border border-outline-variant rounded font-body-md bg-white text-on-surface"
-                  placeholder="Provide comments or transfer triggers..."
-                  value={transReason}
-                  onChange={(e) => setTransReason(e.target.value)}
-                  disabled={submitting}
-                />
-              </div>
-
-              {/* Dynamic Transfer Notice */}
-              {transUnitId && (
-                <div
-                  className={`p-3.5 rounded border text-xs font-semibold leading-relaxed ${
-                    isSelectedTransferInternal
-                      ? "bg-primary-container/10 border-primary-container/30 text-primary-container"
-                      : "bg-[#fff9c4] border-[#fbc02d]/30 text-[#f57f17]"
-                  }`}
-                >
-                  <div className="flex gap-2 items-start">
-                    <span className="material-symbols-outlined text-[18px]">info</span>
-                    <div>
-                      {isSelectedTransferInternal ? (
-                        <p>
-                          <strong>Internal Transfer:</strong> Destination is in the same operational unit. This transfer completes immediately without approval.
-                        </p>
-                      ) : (
-                        <p>
-                          <strong>Inter-unit Transfer:</strong> Destination crosses unit boundaries. This transfer will remain in a pending state until approved by an administrator.
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                    required
+                    className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
                 </div>
-              )}
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-outline-variant mt-6">
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.phone_number}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, phone_number: e.target.value })
+                    }
+                    placeholder="080..."
+                    className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface mb-1">
+                    National ID (NIN)
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.national_id_nin}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        national_id_nin: e.target.value,
+                      })
+                    }
+                    placeholder="11-digit NIN"
+                    className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface font-mono focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface mb-1">
+                    Employment Status
+                  </label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, status: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface mb-1">
+                    Next of Kin Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.next_of_kin_name}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        next_of_kin_name: e.target.value,
+                      })
+                    }
+                    placeholder="Emergency contact full name"
+                    className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface mb-1">
+                    Next of Kin Phone
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.next_of_kin_phone}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        next_of_kin_phone: e.target.value,
+                      })
+                    }
+                    placeholder="Emergency contact phone"
+                    className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2 border-t border-outline-variant">
                 <button
                   type="button"
-                  onClick={() => setIsTransferModalOpen(false)}
-                  className="px-4 py-2 border border-outline-variant hover:bg-surface-container rounded text-body-md"
-                  disabled={submitting}
+                  onClick={() => setIsEditProfileModalOpen(false)}
+                  className="px-4 py-2 border border-outline-variant text-on-surface rounded-xl text-xs font-semibold hover:bg-surface-container transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-primary text-white hover:bg-[#0E4526] rounded text-body-md font-semibold disabled:opacity-50"
                   disabled={submitting}
+                  className="px-5 py-2 bg-primary hover:bg-[#0E4526] text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  {submitting ? "Initiating..." : "Confirm Transfer"}
+                  {submitting && (
+                    <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  )}
+                  <span>Save Changes</span>
                 </button>
               </div>
             </form>

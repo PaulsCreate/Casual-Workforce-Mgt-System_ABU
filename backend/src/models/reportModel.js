@@ -6,7 +6,10 @@ async function generateReportData(operational_location_id, month, year) {
        w.id AS worker_id,
        w.staff_id,
        w.full_name,
-       COUNT(att.id)::int AS days_worked
+       w.phone_number,
+       w.national_id_nin,
+       COUNT(att.id)::int AS days_worked,
+       COALESCE(ARRAY_AGG(EXTRACT(DAY FROM att.attendance_date)::int) FILTER (WHERE att.id IS NOT NULL), '{}') AS days_present_array
      FROM assignments a
      JOIN workers w ON w.id = a.worker_id
      LEFT JOIN attendance att
@@ -16,7 +19,8 @@ async function generateReportData(operational_location_id, month, year) {
      WHERE a.operational_location_id = $1
        AND a.effective_from <= (make_date($3::int, $2::int, 1) + interval '1 month' - interval '1 day')
        AND (a.effective_to IS NULL OR a.effective_to >= make_date($3::int, $2::int, 1))
-     GROUP BY w.id, w.staff_id, w.full_name
+     GROUP BY w.id, w.staff_id, w.full_name, w.phone_number, w.national_id_nin, a.effective_to
+     HAVING (a.effective_to IS NULL OR COUNT(att.id) > 0)
      ORDER BY w.full_name`,
     [operational_location_id, month, year],
   );
@@ -155,7 +159,7 @@ async function getDashboardStatsByDivision(divisionId) {
   };
 }
 
-// Generate report data across multiple locations (e.g. all blocks in a hostel)
+// Generate report data across multiple locations (e.g. all blocks in a hostel or all hostels)
 async function generateMultipleLocationsReportData(operational_location_ids, month, year) {
   if (!Array.isArray(operational_location_ids) || operational_location_ids.length === 0) {
     return [];
@@ -165,11 +169,14 @@ async function generateMultipleLocationsReportData(operational_location_ids, mon
        w.id AS worker_id,
        w.staff_id,
        w.full_name,
+       w.phone_number,
+       w.national_id_nin,
        ol.id AS location_id,
        ol.name AS location_name,
        ou.id AS unit_id,
        ou.name AS unit_name,
-       COUNT(att.id)::int AS days_worked
+       COUNT(att.id)::int AS days_worked,
+       COALESCE(ARRAY_AGG(EXTRACT(DAY FROM att.attendance_date)::int) FILTER (WHERE att.id IS NOT NULL), '{}') AS days_present_array
      FROM assignments a
      JOIN workers w ON w.id = a.worker_id
      JOIN operational_locations ol ON ol.id = a.operational_location_id
@@ -181,20 +188,31 @@ async function generateMultipleLocationsReportData(operational_location_ids, mon
      WHERE a.operational_location_id = ANY($1::int[])
        AND a.effective_from <= (make_date($3::int, $2::int, 1) + interval '1 month' - interval '1 day')
        AND (a.effective_to IS NULL OR a.effective_to >= make_date($3::int, $2::int, 1))
-     GROUP BY w.id, w.staff_id, w.full_name, ol.id, ol.name, ou.id, ou.name
+     GROUP BY w.id, w.staff_id, w.full_name, w.phone_number, w.national_id_nin, ol.id, ol.name, ou.id, ou.name, a.effective_to
+     HAVING (a.effective_to IS NULL OR COUNT(att.id) > 0)
      ORDER BY ol.name, w.full_name`,
     [operational_location_ids, month, year],
   );
   return result.rows;
 }
 
-// Master Division-Wide Aggregate Report
+// Master Division-Wide / All Hostels Aggregate Report
 async function generateDivisionAggregateReport(division_id, month, year) {
-  let query = `
+  const params = [month, year];
+  let divFilter = "";
+
+  if (division_id) {
+    params.push(division_id);
+    divFilter = ` AND ou.division_id = $${params.length} `;
+  }
+
+  const query = `
     SELECT
       w.id AS worker_id,
       w.staff_id,
       w.full_name,
+      w.phone_number,
+      w.national_id_nin,
       ol.id AS location_id,
       ol.name AS location_name,
       ou.id AS unit_id,
@@ -202,6 +220,7 @@ async function generateDivisionAggregateReport(division_id, month, year) {
       d.id AS division_id,
       d.name AS division_name,
       COUNT(att.id)::int AS days_worked,
+      COALESCE(ARRAY_AGG(EXTRACT(DAY FROM att.attendance_date)::int) FILTER (WHERE att.id IS NOT NULL), '{}') AS days_present_array,
       rv.status AS verification_status
     FROM assignments a
     JOIN workers w ON w.id = a.worker_id
@@ -210,24 +229,18 @@ async function generateDivisionAggregateReport(division_id, month, year) {
     JOIN divisions d ON d.id = ou.division_id
     LEFT JOIN attendance att
       ON att.assignment_id = a.id
-      AND EXTRACT(MONTH FROM att.attendance_date) = $2
-      AND EXTRACT(YEAR FROM att.attendance_date) = $3
+      AND EXTRACT(MONTH FROM att.attendance_date) = $1
+      AND EXTRACT(YEAR FROM att.attendance_date) = $2
     LEFT JOIN report_verifications rv
       ON rv.operational_location_id = ol.id
-      AND rv.period_month = $2
-      AND rv.period_year = $3
+      AND rv.period_month = $1
+      AND rv.period_year = $2
     WHERE 
-      a.effective_from <= (make_date($3::int, $2::int, 1) + interval '1 month' - interval '1 day')
-      AND (a.effective_to IS NULL OR a.effective_to >= make_date($3::int, $2::int, 1))
-  `;
-  const params = [division_id, month, year];
-
-  if (division_id) {
-    query += ` AND ou.division_id = $1 `;
-  }
-
-  query += `
-    GROUP BY w.id, w.staff_id, w.full_name, ol.id, ol.name, ou.id, ou.name, d.id, d.name, rv.status
+      a.effective_from <= (make_date($2::int, $1::int, 1) + interval '1 month' - interval '1 day')
+      AND (a.effective_to IS NULL OR a.effective_to >= make_date($2::int, $1::int, 1))
+      ${divFilter}
+    GROUP BY w.id, w.staff_id, w.full_name, w.phone_number, w.national_id_nin, ol.id, ol.name, ou.id, ou.name, d.id, d.name, rv.status, a.effective_to
+    HAVING (a.effective_to IS NULL OR COUNT(att.id) > 0)
     ORDER BY d.name, ou.name, ol.name, w.full_name
   `;
 

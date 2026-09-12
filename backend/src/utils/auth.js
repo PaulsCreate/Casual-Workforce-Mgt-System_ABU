@@ -19,6 +19,8 @@ function generateToken(user) {
       username: user.username,
       role: user.role,
       division_id: user.division_id,
+      division_name: user.division_name || null,
+      must_change_password: Boolean(user.must_change_password),
     },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN },

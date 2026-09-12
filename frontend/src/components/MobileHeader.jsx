@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import abuLogo from "../assets/Logo.png";
+import abuLogo from "../assets/Logo2.png";
+import ChangePasswordModal from "./ChangePasswordModal";
 
 const MobileHeader = ({ title }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -112,13 +114,15 @@ const MobileHeader = ({ title }) => {
         }`}
       >
         <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-2">
-            <img
-              alt="ABU Crest"
-              className="w-8 h-8 rounded-full object-cover"
-              src={abuLogo}
-            />
-            <span className="font-bold text-primary font-headline-sm text-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white p-0.5 shadow-2xs border border-outline-variant/60 flex items-center justify-center flex-shrink-0">
+              <img
+                alt="ABU Crest"
+                className="w-full h-full object-contain"
+                src={abuLogo}
+              />
+            </div>
+            <span className="font-bold text-primary font-headline-sm text-sm truncate">
               ABU Sanitation
             </span>
           </div>
@@ -142,8 +146,8 @@ const MobileHeader = ({ title }) => {
                   onClick={() => setIsOpen(false)}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-label-md text-label-md transition-all ${
                     isActive
-                      ? "bg-primary-container text-white font-semibold shadow-sm"
-                      : "text-on-surface-variant hover:bg-surface-container-high"
+                      ? "bg-primary/10 text-primary font-semibold border-l-[3px] border-primary pl-[calc(0.75rem-3px)]"
+                      : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
                   }`}
                 >
                   <span className="material-symbols-outlined text-[20px]">
@@ -156,25 +160,46 @@ const MobileHeader = ({ title }) => {
         </div>
 
         <div className="mt-auto pt-4 border-t border-outline-variant">
-          <div className="px-2 py-1 mb-2">
-            <p className="font-label-md text-on-surface font-semibold truncate leading-tight">
-              {user?.username}
-            </p>
-            <p className="font-label-md text-on-surface-variant text-[10px] uppercase truncate">
-              {user?.role}
-            </p>
+          <div className="px-2 py-1 mb-2 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary-container text-white ring-2 ring-primary/20 flex items-center justify-center font-bold text-xs uppercase flex-shrink-0">
+              {user?.username?.substring(0, 2) || "US"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-label-md text-on-surface font-semibold truncate leading-tight text-xs">
+                {user?.username}
+              </p>
+              <p className="font-label-md text-primary font-medium text-[10px] truncate">
+                {user?.division_name || user?.role}
+              </p>
+            </div>
           </div>
           <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-all font-label-md text-label-md text-left"
+            onClick={() => {
+              setIsOpen(false);
+              setIsPasswordModalOpen(true);
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-all font-label-md text-label-md text-left text-xs mb-1"
           >
-            <span className="material-symbols-outlined text-[20px]">
+            <span className="material-symbols-outlined text-[18px]">lock_reset</span>
+            <span>Change Password</span>
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-red-600/90 hover:bg-surface-container-high transition-all font-label-md text-label-md text-left text-xs"
+          >
+            <span className="material-symbols-outlined text-[18px]">
               logout
             </span>
             <span>Logout</span>
           </button>
         </div>
       </div>
+
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        isForced={false}
+      />
     </>
   );
 };

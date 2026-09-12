@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { authenticate, authorize } = require("../middleware/auth");
-const { list, getOne, create, deactivate, reactivate } = require("../controllers/userController");
+const { list, getOne, create, deactivate, reactivate, resetUserPassword } = require("../controllers/userController");
 
 router.use(authenticate);
 
@@ -15,5 +15,8 @@ router.post("/", authorize("administrator", "division_admin"), create);
 // Both admin and division_admin can deactivate/reactivate (controller enforces scoping)
 router.patch("/:id/deactivate", authorize("administrator", "division_admin"), deactivate);
 router.patch("/:id/reactivate", authorize("administrator", "division_admin"), reactivate);
+
+// Both admin and division_admin can reset passwords (controller enforces scoping)
+router.post("/:id/reset-password", authorize("administrator", "division_admin"), resetUserPassword);
 
 module.exports = router;

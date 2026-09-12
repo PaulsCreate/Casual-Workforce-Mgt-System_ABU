@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from "react";
 import { loginUser } from "../api/authApi";
+import ChangePasswordModal from "../components/ChangePasswordModal";
 
 const AuthContext = createContext(null);
 
@@ -37,9 +38,12 @@ export const AuthProvider = ({ children }) => {
         } else {
           setUser({
             id: decoded.id,
+            full_name: decoded.full_name,
             username: decoded.username,
             role: decoded.role,
             division_id: decoded.division_id,
+            division_name: decoded.division_name,
+            must_change_password: Boolean(decoded.must_change_password),
           });
         }
       } else {
@@ -66,6 +70,29 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateUserToken = (newToken, updatedUser) => {
+    if (newToken) {
+      localStorage.setItem("token", newToken);
+      setToken(newToken);
+    }
+    if (updatedUser) {
+      setUser(updatedUser);
+    } else if (newToken) {
+      const decoded = decodeToken(newToken);
+      if (decoded) {
+        setUser({
+          id: decoded.id,
+          full_name: decoded.full_name,
+          username: decoded.username,
+          role: decoded.role,
+          division_id: decoded.division_id,
+          division_name: decoded.division_name,
+          must_change_password: Boolean(decoded.must_change_password),
+        });
+      }
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem("token");
     setToken(null);
@@ -73,8 +100,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUserToken, loading }}>
       {children}
+      {user && user.must_change_password && (
+        <ChangePasswordModal
+          isOpen={true}
+          isForced={true}
+          onClose={() => {}}
+        />
+      )}
     </AuthContext.Provider>
   );
 };

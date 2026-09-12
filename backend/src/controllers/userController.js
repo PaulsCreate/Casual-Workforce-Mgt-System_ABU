@@ -5,6 +5,7 @@ const {
   createUser,
   deactivateUser,
   reactivateUser,
+  updatePassword,
 } = require("../models/userModel");
 const { hashPassword } = require("../utils/auth");
 
@@ -157,4 +158,62 @@ async function reactivate(req, res) {
   }
 }
 
-module.exports = { list, getOne, create, deactivate, reactivate };
+const { logAction } = require("../models/auditLogModel");
+
+/**
+ * POST /api/users/:id/reset-password
+ * - administrator: can reset any user's password
+ * - division_admin: can only reset password for supervisors in their own division
+ */
+async function resetUserPassword(req, res) {
+  try {
+    const target = await findById(req.params.id);
+    if (!target) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (req.user.role === "division_admin") {
+      if (Number(target.division_id) !== Number(req.user.division_id) || target.role !== "supervisor") {
+        return res
+          .status(403)
+          .json({ error: "You can only reset passwords for supervisors in your division" });
+      }
+    }
+
+    const { new_password, must_change_password } = req.body;
+    const tempPassword = new_password || "Abupass@2026";
+    const forceChange = must_change_password !== undefined ? Boolean(must_change_password) : true;
+
+    if (tempPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters long" });
+    }
+
+    const passwordHash = await hashPassword(tempPassword);
+    const updated = await updatePassword(target.id, passwordHash, forceChange);
+
+    // Audit log
+    await logAction({
+      user_id: req.user.id,
+      action: "admin_password_reset",
+      entity_type: "user",
+      entity_id: target.id,
+      details: {
+        target_username: target.username,
+        reset_by: req.user.username,
+        must_change_password: forceChange,
+      },
+    }).catch(() => {});
+
+    res.json({
+      message: `Password for ${target.username} has been reset successfully.`,
+      user: updated,
+      temporary_password: tempPassword,
+      must_change_password: forceChange,
+    });
+  } catch (err) {
+    console.error("Admin reset password error:", err);
+    res.status(500).json({ error: "Failed to reset password" });
+  }
+}
+
+module.exports = { list, getOne, create, deactivate, reactivate, resetUserPassword };

@@ -10,7 +10,7 @@ import {
 import { exportToCSV } from "../utils/exportUtils";
 import SideNavBar from "../components/SideNavBar";
 import MobileHeader from "../components/MobileHeader";
-import abuLogo from "../assets/Logo.png";
+import abuLogo from "../assets/Logo2.png";
 
 const MONTHS = [
   "",
@@ -387,7 +387,7 @@ const PendingReports = () => {
             </div>
           )}
           {success && (
-            <div className="p-4 bg-[#e8f5e9] border border-[#c8e6c9] text-[#1b5e20] rounded-xl flex items-center gap-2">
+            <div className="p-4 bg-primary/10 border border-primary/25 text-primary rounded-xl flex items-center gap-2">
               <span className="material-symbols-outlined">check_circle</span>
               <p>{success}</p>
             </div>
@@ -512,8 +512,8 @@ const PendingReports = () => {
             <div className="bg-surface-container border border-outline-variant/50 rounded-xl p-4 flex items-start gap-3">
               <span className="material-symbols-outlined text-primary mt-0.5">info</span>
               <p className="font-label-md text-on-surface-variant text-[12px]">
-                Once you verify a hostel or unit register, it is locked and ready for payment clearance. 
-                You can download the <strong>PDF register</strong> for physical archiving or the <strong>CSV spreadsheet</strong> for forward transmission to the Cash/Bursary Unit.
+                Once you verify a hostel or unit register, it is locked and certified for official records. 
+                You can download the <strong>PDF register</strong> for physical archiving or the <strong>CSV spreadsheet</strong> for forward transmission to administration.
               </p>
             </div>
           )}

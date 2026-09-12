@@ -218,7 +218,7 @@ const AuditLogs = () => {
                           {/* Details */}
                           <td className="py-3 px-6 max-w-xs">
                             {log.details ? (
-                              <pre className="font-data-mono text-[11px] text-on-surface-variant whitespace-pre-wrap break-all leading-relaxed">
+                              <pre className="bg-surface-container-low rounded-lg p-2 font-mono text-xs text-on-surface-variant whitespace-pre-wrap break-all leading-relaxed">
                                 {JSON.stringify(log.details, null, 0)
                                   .replace(/[{}]/g, "")
                                   .replace(/"/g, "")

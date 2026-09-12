@@ -51,3 +51,24 @@ export const getLocationsForSupervisor = async (userId) => {
   const response = await apiClient.get(`/location-supervisors/supervisor/${userId}`);
   return response.data;
 };
+
+// Absence Logs
+export const logAbsence = async (data) => {
+  const response = await apiClient.post("/absence-logs", data);
+  return response.data;
+};
+
+export const removeAbsenceLog = async (data) => {
+  const response = await apiClient.delete("/absence-logs", { data });
+  return response.data;
+};
+
+export const getAbsenceLogsForLocation = async (locationId, date) => {
+  const response = await apiClient.get(`/absence-logs/location/${locationId}/date/${date}`);
+  return response.data;
+};
+
+export const getAbsenceLogsForAssignment = async (assignmentId) => {
+  const response = await apiClient.get(`/absence-logs/assignment/${assignmentId}`);
+  return response.data;
+};

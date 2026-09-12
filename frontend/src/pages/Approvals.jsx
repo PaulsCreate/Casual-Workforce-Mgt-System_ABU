@@ -115,7 +115,7 @@ const Approvals = () => {
             </div>
           )}
           {success && (
-            <div className="p-4 bg-[#e8f5e9] border border-[#c8e6c9] text-[#1b5e20] rounded-xl flex items-center gap-2">
+            <div className="p-4 bg-primary/10 border border-primary/25 text-primary rounded-xl flex items-center gap-2">
               <span className="material-symbols-outlined">check_circle</span>
               <p className="font-body-md">{success}</p>
             </div>

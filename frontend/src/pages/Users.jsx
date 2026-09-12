@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getDivisions } from "../api/hierarchyApi";
-import { getUsers, createUser, deactivateUser, reactivateUser } from "../api/usersApi";
+import { getUsers, createUser, deactivateUser, reactivateUser, resetUserPasswordApi } from "../api/usersApi";
 import SideNavBar from "../components/SideNavBar";
 import MobileHeader from "../components/MobileHeader";
 
@@ -32,6 +32,14 @@ const Users = () => {
   const [formError, setFormError]       = useState("");
   const [saving, setSaving]             = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState(null);
+
+  // Admin Reset Password state
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetTempPass, setResetTempPass] = useState("Abupass@2026");
+  const [resetMustChange, setResetMustChange] = useState(true);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetResult, setResetResult] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const load = async () => {
     try {
@@ -115,6 +123,32 @@ const Users = () => {
     }
   };
 
+  // ── Admin Password Reset ───────────────────────────────────────────
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!resetTarget) return;
+    try {
+      setResetLoading(true);
+      setError("");
+      const res = await resetUserPasswordApi(resetTarget.id, {
+        new_password: resetTempPass,
+        must_change_password: resetMustChange,
+      });
+      setResetResult({
+        username: resetTarget.username,
+        full_name: resetTarget.full_name,
+        tempPassword: resetTempPass,
+        mustChange: resetMustChange,
+      });
+      setResetTarget(null);
+      setSuccess(`Password for ${resetTarget.full_name} has been reset.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to reset password");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const getDivisionName = (divId) =>
     divisions.find((d) => d.id === divId)?.name || (divId ? `Div #${divId}` : "All Divisions");
 
@@ -168,7 +202,7 @@ const Users = () => {
             </div>
           )}
           {success && (
-            <div className="p-4 bg-[#e8f5e9] border border-[#c8e6c9] text-[#1b5e20] rounded-xl flex items-center gap-2">
+            <div className="p-4 bg-primary/10 border border-primary/25 text-primary rounded-xl flex items-center gap-2">
               <span className="material-symbols-outlined">check_circle</span><p>{success}</p>
             </div>
           )}
@@ -264,24 +298,40 @@ const Users = () => {
                             </span>
                           </td>
                           <td className="py-3 px-6">
-                            {!isSelf && u.role !== "administrator" && (
-                              <button
-                                onClick={() => setConfirmDeactivate(u)}
-                                className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1 ${
-                                  u.is_active
-                                    ? "border-error/40 text-error hover:bg-error/5"
-                                    : "border-primary/40 text-primary hover:bg-primary/5"
-                                }`}
-                              >
-                                <span className="material-symbols-outlined text-[14px]">
-                                  {u.is_active ? "person_off" : "person_check"}
-                                </span>
-                                {u.is_active ? "Deactivate" : "Reactivate"}
-                              </button>
-                            )}
-                            {(isSelf || u.role === "administrator") && (
-                              <span className="text-xs text-outline italic">—</span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {!isSelf && (
+                                <button
+                                  onClick={() => {
+                                    setResetTarget(u);
+                                    setResetTempPass("Abupass@2026");
+                                    setResetMustChange(true);
+                                  }}
+                                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-amber-500/40 text-amber-800 bg-amber-50 hover:bg-amber-100 transition-colors flex items-center gap-1"
+                                  title="Reset password for this user"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">lock_reset</span>
+                                  Reset
+                                </button>
+                              )}
+                              {!isSelf && u.role !== "administrator" && (
+                                <button
+                                  onClick={() => setConfirmDeactivate(u)}
+                                  className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors flex items-center gap-1 ${
+                                    u.is_active
+                                      ? "border-error/40 text-error hover:bg-error/5"
+                                      : "border-primary/40 text-primary hover:bg-primary/5"
+                                  }`}
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">
+                                    {u.is_active ? "person_off" : "person_check"}
+                                  </span>
+                                  {u.is_active ? "Deactivate" : "Reactivate"}
+                                </button>
+                              )}
+                              {isSelf && (
+                                <span className="text-xs text-outline italic">Current User</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -302,7 +352,7 @@ const Users = () => {
       {/* ── Create User Modal ─────────────────────────────────────────── */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start">
               <div>
                 <h2 className="font-headline-sm text-headline-sm text-on-surface font-bold">
@@ -456,6 +506,149 @@ const Users = () => {
                 className={`flex-1 px-4 py-2 text-white rounded-lg font-label-md transition-colors ${confirmDeactivate.is_active ? "bg-error hover:bg-error/80" : "bg-primary hover:bg-[#0E4526]"}`}
               >
                 {confirmDeactivate.is_active ? "Yes, Deactivate" : "Yes, Reactivate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Admin Reset Password Modal ─────────────────────────────── */}
+      {resetTarget && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-[22px]">lock_reset</span>
+                </div>
+                <div>
+                  <h3 className="font-headline-sm text-on-surface font-bold">
+                    Reset User Password
+                  </h3>
+                  <p className="text-on-surface-variant text-xs mt-0.5">
+                    For <span className="font-semibold text-on-surface">{resetTarget.full_name}</span> (@{resetTarget.username})
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setResetTarget(null)} className="text-outline hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-on-surface mb-1">
+                  Temporary Password <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={resetTempPass}
+                    onChange={(e) => setResetTempPass(e.target.value)}
+                    required
+                    className="flex-1 px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-lg font-data-mono text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setResetTempPass(`Abu${Math.floor(1000 + Math.random() * 9000)}@2026`)}
+                    className="px-3 py-2 bg-surface-container-high hover:bg-surface-container-highest text-on-surface rounded-lg text-xs font-medium transition-colors"
+                    title="Generate new temporary password"
+                  >
+                    Random
+                  </button>
+                </div>
+                <p className="text-[11px] text-on-surface-variant mt-1">
+                  Share this temporary password securely with the user.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-surface-container-low rounded-xl border border-outline-variant/60">
+                <input
+                  type="checkbox"
+                  id="mustChangeOnLogin"
+                  checked={resetMustChange}
+                  onChange={(e) => setResetMustChange(e.target.checked)}
+                  className="w-4 h-4 rounded text-primary focus:ring-primary border-outline"
+                />
+                <label htmlFor="mustChangeOnLogin" className="text-xs text-on-surface cursor-pointer select-none">
+                  Require user to change password on next login
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setResetTarget(null)}
+                  className="px-4 py-2 border border-outline-variant text-on-surface rounded-lg text-xs font-medium hover:bg-surface-container transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {resetLoading && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                  <span>Reset & Save</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reset Success / Copy Password Modal ───────────────────────── */}
+      {resetResult && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
+              <span className="material-symbols-outlined text-2xl">check_circle</span>
+            </div>
+
+            <div>
+              <h3 className="font-headline-sm text-on-surface font-bold">
+                Password Reset Successfully!
+              </h3>
+              <p className="text-on-surface-variant text-xs mt-1">
+                New temporary credentials for <span className="font-semibold">{resetResult.full_name}</span>:
+              </p>
+            </div>
+
+            <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant text-left space-y-1 font-mono text-xs">
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Username:</span>
+                <span className="font-semibold text-on-surface">{resetResult.username}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Temp Password:</span>
+                <span className="font-bold text-primary">{resetResult.tempPassword}</span>
+              </div>
+              {resetResult.mustChange && (
+                <p className="text-[10px] text-amber-700 font-sans mt-1">
+                  * User will be forced to change this password on next login.
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`Username: ${resetResult.username}\nTemporary Password: ${resetResult.tempPassword}`);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="flex-1 px-4 py-2 border border-primary text-primary hover:bg-primary/5 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[16px]">
+                  {copied ? "done" : "content_copy"}
+                </span>
+                <span>{copied ? "Copied!" : "Copy Details"}</span>
+              </button>
+              <button
+                onClick={() => { setResetResult(null); setCopied(false); }}
+                className="px-5 py-2 bg-primary text-white hover:bg-[#0E4526] rounded-xl text-xs font-semibold transition-colors"
+              >
+                Done
               </button>
             </div>
           </div>

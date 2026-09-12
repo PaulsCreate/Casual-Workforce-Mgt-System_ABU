@@ -4,6 +4,7 @@ import { getDashboardStats } from "../api/reportsApi";
 import { useAuth } from "../context/AuthContext";
 import SideNavBar from "../components/SideNavBar";
 import MobileHeader from "../components/MobileHeader";
+import DivisionBanner from "../components/DivisionBanner";
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -53,7 +54,7 @@ const Dashboard = () => {
         <header className="hidden md:flex justify-between items-center w-full px-margin-desktop h-20 bg-surface border-b border-outline-variant sticky top-0 z-[900]">
           <div>
             <h1 className="font-headline-md text-headline-md text-primary font-bold">
-              Administrator Dashboard
+              {user?.role === "division_admin" ? "Division Dashboard" : "Administrator Dashboard"}
             </h1>
             <p className="font-body-md text-on-surface-variant">
               Casual Sanitation Workforce Attendance and Task Management
@@ -73,6 +74,9 @@ const Dashboard = () => {
 
         {/* Canvas Body */}
         <main className="p-margin-mobile md:p-margin-desktop flex-1 max-w-container-max w-full mx-auto space-y-6">
+          {/* Institutional Division Context Banner */}
+          <DivisionBanner />
+
           {error && (
             <div className="p-4 bg-error-container/20 border border-error/30 text-error rounded-xl flex items-center gap-2">
               <span className="material-symbols-outlined">error</span>
@@ -83,7 +87,7 @@ const Dashboard = () => {
           {/* Quick Stats Bento Grid */}
           <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Workers Stat */}
-            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col justify-between">
+            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-default flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <span className="font-label-md text-on-surface-variant font-medium">
                   Active Workforce
@@ -103,17 +107,17 @@ const Dashboard = () => {
             </div>
 
             {/* Attendance Stat */}
-            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col justify-between">
+            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-default flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <span className="font-label-md text-on-surface-variant font-medium">
                   Attendance Today
                 </span>
-                <span className="material-symbols-outlined text-[#336669] bg-[#336669]/10 p-2 rounded-lg">
+                <span className="material-symbols-outlined text-secondary bg-secondary/10 p-2 rounded-lg">
                   assignment_turned_in
                 </span>
               </div>
               <div className="mt-4">
-                <h3 className="font-display-lg text-display-lg text-[#336669] font-bold">
+                <h3 className="font-display-lg text-display-lg text-secondary font-bold">
                   {loading ? "..." : stats.attendance_today}
                 </h3>
                 <p className="font-label-md text-on-surface-variant text-[11px] mt-1">
@@ -123,7 +127,7 @@ const Dashboard = () => {
             </div>
 
             {/* Pending Approvals */}
-            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col justify-between">
+            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-default flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <span className="font-label-md text-on-surface-variant font-medium">
                   Pending Transfers
@@ -143,7 +147,7 @@ const Dashboard = () => {
             </div>
 
             {/* Locations Stat */}
-            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col justify-between">
+            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-default flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <span className="font-label-md text-on-surface-variant font-medium">
                   Deployed Locations
@@ -226,7 +230,7 @@ const Dashboard = () => {
                   onClick={() => navigate("/reports")}
                   className="p-4 border border-outline-variant hover:border-primary rounded-lg flex items-center gap-4 transition-all text-left bg-surface-container-lowest hover:bg-surface-container-low"
                 >
-                  <span className="material-symbols-outlined text-[#3c0512] bg-[#ffd9dc] p-3 rounded-lg text-3xl">
+                  <span className="material-symbols-outlined text-on-tertiary-fixed bg-tertiary-fixed p-3 rounded-lg text-3xl">
                     assessment
                   </span>
                   <div>
@@ -234,7 +238,7 @@ const Dashboard = () => {
                       Monthly Registers
                     </h4>
                     <p className="font-label-md text-on-surface-variant text-[11px] mt-0.5">
-                      Generate, submit and verify monthly payroll records.
+                      Generate, submit and verify monthly attendance registers.
                     </p>
                   </div>
                 </button>
@@ -256,7 +260,7 @@ const Dashboard = () => {
                       Verified Records Only
                     </h4>
                     <p className="font-label-md text-on-surface-variant text-[12px] mt-0.5 leading-relaxed">
-                      All monthly report metrics require institutional sign-off before payment is verified.
+                      All monthly report metrics require institutional sign-off and administrative verification.
                     </p>
                   </div>
                 </div>

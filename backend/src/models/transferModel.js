@@ -108,17 +108,40 @@ async function getTransfersForWorker(worker_id) {
 }
 
 async function getTransfersByStatus(status, divisionId) {
+  let query = `
+    SELECT 
+      t.*,
+      w.full_name AS worker_name,
+      w.staff_id,
+      from_d.name AS from_division_name,
+      to_d.name AS to_division_name,
+      from_ou.name AS from_unit_name,
+      to_ou.name AS to_unit_name,
+      from_ol.name AS from_location_name,
+      to_ol.name AS to_location_name,
+      u.username AS requested_by_username
+    FROM transfers t
+    JOIN workers w ON w.id = t.worker_id
+    JOIN assignments from_a ON from_a.id = t.from_assignment_id
+    JOIN divisions from_d ON from_d.id = from_a.division_id
+    JOIN operational_units from_ou ON from_ou.id = from_a.operational_unit_id
+    JOIN operational_locations from_ol ON from_ol.id = from_a.operational_location_id
+    JOIN divisions to_d ON to_d.id = t.to_division_id
+    JOIN operational_units to_ou ON to_ou.id = t.to_operational_unit_id
+    JOIN operational_locations to_ol ON to_ol.id = t.to_operational_location_id
+    LEFT JOIN users u ON u.id = t.requested_by
+    WHERE t.status = $1
+  `;
+  const params = [status];
+
   if (divisionId) {
-    const result = await pool.query(
-      "SELECT * FROM transfers WHERE status = $1 AND to_division_id = $2 ORDER BY requested_at",
-      [status, divisionId],
-    );
-    return result.rows;
+    params.push(divisionId);
+    query += ` AND (t.to_division_id = $${params.length} OR from_a.division_id = $${params.length})`;
   }
-  const result = await pool.query(
-    "SELECT * FROM transfers WHERE status = $1 ORDER BY requested_at",
-    [status],
-  );
+
+  query += ` ORDER BY t.requested_at DESC`;
+
+  const result = await pool.query(query, params);
   return result.rows;
 }
 

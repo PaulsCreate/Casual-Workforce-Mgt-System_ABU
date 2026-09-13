@@ -1,8 +1,8 @@
 import apiClient from "./apiClient";
 
 // Divisions
-export const getDivisions = async () => {
-  const response = await apiClient.get("/divisions");
+export const getDivisions = async (params = {}) => {
+  const response = await apiClient.get("/divisions", { params });
   return response.data;
 };
 

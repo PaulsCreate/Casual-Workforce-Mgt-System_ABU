@@ -45,9 +45,12 @@ const WorkerProfile = () => {
   const [assignEffectiveFrom, setAssignEffectiveFrom] = useState("");
 
   // Transfer form input states
+  const [transDivId, setTransDivId] = useState("");
   const [transUnitId, setTransUnitId] = useState("");
   const [transLocId, setTransLocId] = useState("");
   const [transReason, setTransReason] = useState("");
+  const [transUnits, setTransUnits] = useState([]);
+  const [transLocations, setTransLocations] = useState([]);
 
   // Edit profile form state
   const [editForm, setEditForm] = useState({
@@ -164,10 +167,18 @@ const WorkerProfile = () => {
     }
     try {
       setError("");
-      const unitData = await getUnits(currentAssign.division_id);
-      setUnits(unitData);
+      // Pre-select current division by default
+      const defaultDivId = String(currentAssign.division_id);
+      setTransDivId(defaultDivId);
+      const [allDivs, unitData] = await Promise.all([
+        getDivisions({ all: "true" }),
+        getUnits(currentAssign.division_id),
+      ]);
+      setDivisions(allDivs);
+      setTransUnits(unitData);
       setTransUnitId("");
       setTransLocId("");
+      setTransLocations([]);
       setTransReason("");
       setIsTransferModalOpen(true);
     } catch (err) {
@@ -198,13 +209,25 @@ const WorkerProfile = () => {
     }
   };
 
+  const handleTransferDivChange = async (divId) => {
+    setTransDivId(divId);
+    setTransUnitId("");
+    setTransLocId("");
+    setTransUnits([]);
+    setTransLocations([]);
+    if (divId) {
+      const data = await getUnits(divId);
+      setTransUnits(data);
+    }
+  };
+
   const handleTransferUnitChange = async (unitId) => {
     setTransUnitId(unitId);
     setTransLocId("");
-    setLocations([]);
+    setTransLocations([]);
     if (unitId) {
       const data = await getLocations(unitId);
-      setLocations(data);
+      setTransLocations(data);
     }
   };
 
@@ -263,34 +286,45 @@ const WorkerProfile = () => {
       setError("Destination Unit and Location are required");
       return;
     }
+
+    const currentAssign = dossierData?.assignments?.find(
+      (a) => !a.effective_to,
+    );
+    const targetDiv = transDivId ? Number(transDivId) : Number(currentAssign?.division_id);
+    const isIntra = currentAssign && targetDiv === Number(currentAssign.division_id);
+
+    // Intra-division confirmation check
+    if (isIntra) {
+      const selectedLoc = transLocations.find((l) => Number(l.id) === Number(transLocId));
+      const confirmed = window.confirm(
+        `Are you sure you want to reassign ${worker?.full_name || "this worker"} to ${selectedLoc?.name || "the selected location"}? This will take effect immediately.`
+      );
+      if (!confirmed) return;
+    }
+
     setSubmitting(true);
     try {
       setError("");
-      const currentAssign = dossierData?.assignments?.find(
-        (a) => !a.effective_to,
-      );
-      await createTransfer({
+      const res = await createTransfer({
         worker_id: Number(id),
+        to_division_id: targetDiv,
         to_operational_unit_id: Number(transUnitId),
         to_operational_location_id: Number(transLocId),
         reason: transReason,
       });
 
-      const isInternal =
-        currentAssign &&
-        Number(transUnitId) === currentAssign.operational_unit_id;
-      if (isInternal) {
-        setSuccess("Internal station transfer executed immediately!");
+      if (res.status === "completed" || isIntra) {
+        setSuccess("Worker reassigned successfully within division!");
       } else {
         setSuccess(
-          "Inter-unit transfer requested! Awaiting administrator approval in Approvals page.",
+          "Inter-division transfer request submitted! Forwarded to Central Administrator for approval in the Approvals panel.",
         );
       }
 
       setIsTransferModalOpen(false);
       loadProfile();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to create transfer");
+      setError(err.response?.data?.error || "Failed to process transfer");
     } finally {
       setSubmitting(false);
     }
@@ -309,9 +343,9 @@ const WorkerProfile = () => {
       ? Math.round((stats.total_present / stats.total_recorded_days) * 100)
       : 0;
 
-  const isSelectedTransferInternal =
+  const isSelectedTransferIntra =
     activeAssignment &&
-    Number(transUnitId) === activeAssignment.operational_unit_id;
+    (transDivId ? Number(transDivId) === Number(activeAssignment.division_id) : true);
 
   const initials = worker?.full_name
     ? worker.full_name
@@ -507,19 +541,19 @@ const WorkerProfile = () => {
                       <span className="material-symbols-outlined text-[18px]">
                         transfer_within_a_station
                       </span>
-                      Request Transfer
+                      Transfer / Reassign Station
                     </button>
-                  ) : null}
-
-                  <button
-                    onClick={handleOpenAssignModal}
-                    className="px-4 py-2.5 bg-primary hover:bg-[#0E4526] text-white rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">
-                      assignment_ind
-                    </span>
-                    {activeAssignment ? "Reassign Station" : "Deploy Worker"}
-                  </button>
+                  ) : (
+                    <button
+                      onClick={handleOpenAssignModal}
+                      className="px-4 py-2.5 bg-primary hover:bg-[#0E4526] text-white rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        assignment_ind
+                      </span>
+                      Deploy Worker to Station
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -777,16 +811,36 @@ const WorkerProfile = () => {
             <form onSubmit={handleTransferSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-on-surface mb-1">
-                  Destination Unit <span className="text-red-500">*</span>
+                  Target Division <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={transDivId}
+                  onChange={(e) => handleTransferDivChange(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
+                >
+                  <option value="">Select target division</option>
+                  {divisions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} {activeAssignment && Number(d.id) === Number(activeAssignment.division_id) ? "(Current Division)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-on-surface mb-1">
+                  Target Operational Unit <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={transUnitId}
                   onChange={(e) => handleTransferUnitChange(e.target.value)}
+                  disabled={!transDivId}
                   required
-                  className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
                 >
                   <option value="">Select target operational unit</option>
-                  {units.map((u) => (
+                  {transUnits.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
                     </option>
@@ -796,8 +850,7 @@ const WorkerProfile = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-on-surface mb-1">
-                  Destination Location / Block{" "}
-                  <span className="text-red-500">*</span>
+                  Target Location / Block <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={transLocId}
@@ -807,7 +860,7 @@ const WorkerProfile = () => {
                   className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
                 >
                   <option value="">Select target location</option>
-                  {locations.map((loc) => (
+                  {transLocations.map((loc) => (
                     <option key={loc.id} value={loc.id}>
                       {loc.name}
                     </option>
@@ -817,7 +870,7 @@ const WorkerProfile = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-on-surface mb-1">
-                  Administrative Reason / Ref
+                  Administrative Reason / Reference
                 </label>
                 <textarea
                   value={transReason}
@@ -831,25 +884,25 @@ const WorkerProfile = () => {
               {transUnitId && (
                 <div
                   className={`p-3 rounded-xl text-xs border ${
-                    isSelectedTransferInternal
+                    isSelectedTransferIntra
                       ? "bg-primary/5 border-primary/20 text-primary"
                       : "bg-amber-50 border-amber-200 text-amber-800"
                   }`}
                 >
                   <div className="flex items-center gap-1.5 font-bold mb-0.5">
                     <span className="material-symbols-outlined text-[16px]">
-                      {isSelectedTransferInternal ? "bolt" : "gavel"}
+                      {isSelectedTransferIntra ? "bolt" : "gavel"}
                     </span>
                     <span>
-                      {isSelectedTransferInternal
-                        ? "Internal Reallocation"
-                        : "Inter-Unit Transfer"}
+                      {isSelectedTransferIntra
+                        ? "Intra-Division Reassignment"
+                        : "Inter-Division Transfer"}
                     </span>
                   </div>
                   <p className="text-[11px] leading-relaxed">
-                    {isSelectedTransferInternal
-                      ? "Same operational unit: will execute and update attendance records immediately."
-                      : "Crosses unit boundaries: will be submitted to the Transfer Approvals queue for administrative authorization."}
+                    {isSelectedTransferIntra
+                      ? "Same division: will execute immediately upon confirmation without waiting for approval."
+                      : "Crosses division boundaries: will be submitted to the Central Administrator in the Approvals panel for authorization."}
                   </p>
                 </div>
               )}

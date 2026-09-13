@@ -4,12 +4,16 @@ const { authenticate, authorize } = require("../middleware/auth");
 const controller = require("../controllers/transferController");
 
 router.use(authenticate);
-router.use(authorize("administrator", "division_admin"));
 
-router.post("/", controller.create);
-router.post("/:id/approve", controller.approve);
-router.post("/:id/reject", controller.reject);
-router.get("/worker/:workerId", controller.history);
-router.get("/pending", controller.pending);
+// Create transfer: Both Central Administrator and Division Admin can initiate
+router.post("/", authorize("administrator", "division_admin"), controller.create);
+
+// Worker transfer history: Accessible to both admins
+router.get("/worker/:workerId", authorize("administrator", "division_admin"), controller.history);
+
+// Cross-division approval workflow: STRICTLY RESTRICTED TO CENTRAL ADMINISTRATOR
+router.get("/pending", authorize("administrator"), controller.pending);
+router.post("/:id/approve", authorize("administrator"), controller.approve);
+router.post("/:id/reject", authorize("administrator"), controller.reject);
 
 module.exports = router;

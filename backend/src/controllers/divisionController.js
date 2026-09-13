@@ -29,7 +29,8 @@ async function create(req, res) {
 
 async function list(req, res) {
   try {
-    if (req.user.role === "division_admin") {
+    // If specifically requested (e.g. transfer target selector), allow reading all divisions
+    if (req.user.role === "division_admin" && req.query.all !== "true") {
       const division = await getDivisionById(req.user.division_id);
       return res.json(division ? [division] : []);
     }

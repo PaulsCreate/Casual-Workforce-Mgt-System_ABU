@@ -88,11 +88,12 @@ const Approvals = () => {
 
         {/* Desktop Header */}
         <header className="hidden md:flex justify-between items-center w-full px-margin-desktop h-16 bg-surface border-b border-outline-variant sticky top-0 z-[900]">
-          <div className="font-headline-sm text-headline-sm font-bold text-primary">
-            Transfer Approvals
+          <div className="font-headline-sm text-headline-sm font-bold text-primary flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">gavel</span>
+            Inter-Division Transfer Approvals
           </div>
           <div className="text-on-surface-variant font-label-md text-label-md">
-            Pending Inter-Unit Relocations
+            Central Administrator Governance
           </div>
         </header>
 
@@ -100,10 +101,10 @@ const Approvals = () => {
         <main className="p-margin-mobile md:p-margin-desktop flex-1 max-w-container-max w-full mx-auto space-y-6">
           <div className="border-b border-outline-variant pb-4">
             <h2 className="font-display-lg text-display-lg text-on-surface mb-2 font-bold">
-              Pending Approvals
+              Pending Inter-Division Transfers
             </h2>
-            <p className="font-body-lg text-on-surface-variant">
-              Review, approve, or reject worker transfers crossing Operational Unit boundaries.
+            <p className="font-body-lg text-on-surface-variant text-sm">
+              Review and authorize cross-division casual worker reassignments. Intra-division station moves complete automatically without requiring central approval.
             </p>
           </div>
 
@@ -135,47 +136,63 @@ const Approvals = () => {
                 <span className="material-symbols-outlined text-4xl mb-2 text-outline">
                   assignment_turned_in
                 </span>
-                <h3 className="font-title-lg font-bold text-on-surface">No Pending Approvals</h3>
-                <p className="mt-1">All worker transfer requests have been processed.</p>
+                <h3 className="font-title-lg font-bold text-on-surface">No Pending Cross-Division Approvals</h3>
+                <p className="mt-1 text-xs">All cross-division transfer requests have been reviewed and decided.</p>
               </div>
             ) : (
               transfers.map((t) => (
                 <div
                   key={t.id}
-                  className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6"
+                  className="bg-white border border-outline-variant rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6"
                 >
                   <div className="space-y-3 flex-1 min-w-0">
-                    <div>
-                      <h4 className="font-title-lg text-on-surface font-bold text-base truncate">
-                        Transfer Request #{t.id}
-                      </h4>
-                      <p className="font-data-mono text-data-mono text-[12px] text-on-surface-variant mt-0.5">
-                        Worker ID: {t.worker_id}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center font-bold text-sm shrink-0">
+                        #{t.id}
+                      </div>
+                      <div>
+                        <h4 className="font-title-lg text-on-surface font-bold text-base truncate">
+                          {t.worker_name || `Worker #${t.worker_id}`}
+                        </h4>
+                        <p className="font-mono text-xs text-on-surface-variant">
+                          Staff ID: <span className="font-semibold text-on-surface">{t.staff_id || "N/A"}</span>
+                          {t.requested_by_username && (
+                            <span className="ml-2 font-sans text-[11px] text-on-surface-variant/80">
+                              (Requested by @{t.requested_by_username})
+                            </span>
+                          )}
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/60 text-xs">
                       <div>
-                        <p className="text-[11px] font-label-md text-on-surface-variant uppercase tracking-wider">
-                          Current Assignment
+                        <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-0.5">
+                          Origin (Current Station)
                         </p>
-                        <p className="font-semibold text-on-surface text-xs leading-relaxed truncate">
-                          From Assignment ID: #{t.from_assignment_id}
+                        <p className="font-semibold text-on-surface truncate">
+                          {t.from_division_name || `Division #${t.from_division_id}`}
+                        </p>
+                        <p className="text-on-surface-variant text-[11px] truncate">
+                          {t.from_unit_name} · {t.from_location_name}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[11px] font-label-md text-on-surface-variant uppercase tracking-wider">
-                          Target Destination
+                        <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-0.5">
+                          Proposed Target Station
                         </p>
-                        <p className="font-semibold text-secondary text-xs leading-relaxed truncate">
-                          Division {t.to_division_id} &gt; Unit {t.to_operational_unit_id} &gt; Location {t.to_operational_location_id}
+                        <p className="font-semibold text-primary truncate">
+                          {t.to_division_name || `Division #${t.to_division_id}`}
+                        </p>
+                        <p className="text-on-surface-variant text-[11px] truncate">
+                          {t.to_unit_name} · {t.to_location_name}
                         </p>
                       </div>
                     </div>
 
                     {t.reason && (
-                      <div className="p-3 bg-surface-container-low border border-outline-variant/60 rounded text-xs text-on-surface-variant leading-relaxed">
-                        <strong>Reason:</strong> {t.reason}
+                      <div className="p-3 bg-white border border-outline-variant/80 rounded-xl text-xs text-on-surface-variant leading-relaxed">
+                        <strong className="text-on-surface">Transfer Memo:</strong> {t.reason}
                       </div>
                     )}
                   </div>
@@ -183,16 +200,16 @@ const Approvals = () => {
                   <div className="flex gap-2 w-full md:w-auto shrink-0 justify-end pt-4 md:pt-0 border-t md:border-t-0 border-outline-variant">
                     <button
                       onClick={() => handleReject(t.id)}
-                      className="flex-1 md:flex-none px-4 py-2 border border-error text-error hover:bg-error/5 rounded-lg text-body-md font-semibold transition-colors"
+                      className="flex-1 md:flex-none px-4 py-2 border border-error text-error hover:bg-error/5 rounded-xl text-xs font-semibold transition-colors"
                     >
                       Reject
                     </button>
                     <button
                       onClick={() => handleOpenApproveModal(t)}
-                      className="flex-1 md:flex-none px-4 py-2 bg-primary text-on-primary hover:bg-[#0E4526] rounded-lg text-body-md font-semibold transition-colors flex items-center justify-center gap-1"
+                      className="flex-1 md:flex-none px-5 py-2 bg-primary text-white hover:bg-[#0E4526] rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
                     >
-                      <span className="material-symbols-outlined text-[18px]">done</span>
-                      Approve
+                      <span className="material-symbols-outlined text-[16px]">check</span>
+                      Authorize Transfer
                     </button>
                   </div>
                 </div>

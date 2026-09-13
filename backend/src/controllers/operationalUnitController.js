@@ -45,8 +45,10 @@ async function create(req, res) {
 
 async function list(req, res) {
   try {
+    // If client requested a specific division, honor it (e.g. for selecting transfer targets)
+    // Otherwise, default division_admin to their own division
     let divisionId = req.query.division_id;
-    if (req.user.role === "division_admin") {
+    if (!divisionId && req.user.role === "division_admin") {
       divisionId = req.user.division_id;
     }
     const units = await getAllOperationalUnits(divisionId);

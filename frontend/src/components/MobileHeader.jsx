@@ -43,7 +43,7 @@ const MobileHeader = ({ title }) => {
       name: "Approvals",
       path: "/approvals",
       icon: "approval",
-      show: isAdminTier,
+      show: isAdmin,
     },
     {
       name: "Attendance",

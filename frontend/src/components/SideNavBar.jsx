@@ -48,7 +48,7 @@ const SideNavBar = () => {
       name: "Approvals",
       path: "/approvals",
       icon: "approval",
-      show: isAdminTier,
+      show: isAdmin,
     },
     {
       name: "Attendance",

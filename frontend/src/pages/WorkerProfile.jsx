@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useParams, Link } from "react-router-dom";
 import {
   getWorkerDossier,
   updateWorker,
@@ -15,9 +15,7 @@ import MobileHeader from "../components/MobileHeader";
 
 const WorkerProfile = () => {
   const { id } = useParams();
-  const navigate = useNavigate();
   const { user: currentUser } = useAuth();
-  const isAdmin = currentUser?.role === "administrator";
   const isDivAdmin = currentUser?.role === "division_admin";
 
   const [dossierData, setDossierData] = useState(null);
@@ -64,11 +62,12 @@ const WorkerProfile = () => {
 
   const [submitting, setSubmitting] = useState(false);
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async (isActive = () => true) => {
     try {
       setLoading(true);
       setError("");
       const data = await getWorkerDossier(id);
+      if (!isActive()) return;
       setDossierData(data);
       if (data?.worker) {
         setEditForm({
@@ -80,17 +79,22 @@ const WorkerProfile = () => {
           next_of_kin_phone: data.worker.next_of_kin_phone || "",
         });
       }
-    } catch (err) {
+    } catch {
       console.error(err);
+      if (!isActive()) return;
       setError("Failed to load worker profile");
     } finally {
-      setLoading(false);
+      if (isActive()) setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
-    loadProfile();
-  }, [id]);
+    let mounted = true;
+    loadProfile(() => mounted);
+    return () => {
+      mounted = false;
+    };
+  }, [id, loadProfile]);
 
   // Handle Photo Upload
   const handlePhotoSelected = async (e) => {
@@ -181,7 +185,7 @@ const WorkerProfile = () => {
       setTransLocations([]);
       setTransReason("");
       setIsTransferModalOpen(true);
-    } catch (err) {
+    } catch {
       setError("Failed to load transfer options");
     }
   };

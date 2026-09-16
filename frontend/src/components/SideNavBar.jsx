@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import abuLogo from "../assets/Logo2.png";
 import ChangePasswordModal from "./ChangePasswordModal";
+import { getMenuItems } from "../navigation/menuItems";
 
 const SideNavBar = () => {
   const { user, logout } = useAuth();
@@ -15,72 +16,13 @@ const SideNavBar = () => {
     navigate("/login");
   };
 
-  const isAdmin    = user?.role === "administrator";
-  const isDivAdmin = user?.role === "division_admin";
-  const isAdminTier = isAdmin || isDivAdmin; // either admin level
-
   const ROLE_LABELS = {
     administrator:  "General Admin",
     division_admin: "Division Admin",
     supervisor:     "Supervisor",
   };
 
-  const menuItems = [
-    {
-      name: "Dashboard",
-      path: "/dashboard",
-      icon: "dashboard",
-      show: isAdminTier,
-    },
-    {
-      name: "Hierarchy",
-      path: "/hierarchy",
-      icon: "account_tree",
-      show: isAdminTier,
-    },
-    {
-      name: "Workforce",
-      path: "/workers",
-      icon: "groups",
-      show: isAdminTier,
-    },
-    {
-      name: "Approvals",
-      path: "/approvals",
-      icon: "approval",
-      show: isAdmin,
-    },
-    {
-      name: "Attendance",
-      path: "/attendance",
-      icon: "assignment_turned_in",
-      show: true,
-    },
-    {
-      name: "Reports",
-      path: "/reports",
-      icon: "assessment",
-      show: true,
-    },
-    {
-      name: "Pending Reports",
-      path: "/pending-reports",
-      icon: "pending_actions",
-      show: isAdminTier,
-    },
-    {
-      name: "Users",
-      path: "/users",
-      icon: "manage_accounts",
-      show: isAdminTier,
-    },
-    {
-      name: "Audit Logs",
-      path: "/audit-logs",
-      icon: "history",
-      show: isAdmin,
-    },
-  ];
+  const menuItems = getMenuItems(user);
 
   return (
     <nav className="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container py-6 px-4 gap-2 border-r border-outline-variant z-[1000] overflow-y-auto">

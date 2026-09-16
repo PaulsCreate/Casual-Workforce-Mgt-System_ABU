@@ -54,30 +54,19 @@ const Login = () => {
         }}
       />
 
-      {/* Subtle decorative circle top-left */}
-      <div className="absolute -top-32 -left-32 w-[420px] h-[420px] rounded-full border border-white/10 pointer-events-none" />
-      <div className="absolute -top-20 -left-20 w-[260px] h-[260px] rounded-full border border-white/5 pointer-events-none" />
-      {/* Bottom right */}
-      <div className="absolute -bottom-32 -right-32 w-[400px] h-[400px] rounded-full border border-white/10 pointer-events-none" />
-
       {/* Card */}
       <main className="relative z-10 w-full max-w-[440px] flex flex-col items-center">
-        {/* Logo block — no circle clip, just a clean elevated badge */}
         <div className="mb-6 flex flex-col items-center">
-          {/* Emblem container: dark green pill with inner glow */}
           <div
-            className="w-32 h-32 flex items-center justify-center rounded-2xl mb-4 shadow-2xl"
+            className="w-24 h-24 flex items-center justify-center rounded-xl mb-4 shadow-lg"
             style={{
               background: "linear-gradient(145deg, #004120, #145a32)",
-              boxShadow:
-                "0 0 0 2px rgba(145,214,163,0.25), 0 20px 40px rgba(0,0,0,0.5)",
             }}
           >
-            {/* mix-blend-multiply makes the white logo background transparent against green */}
             <img
               src={abuLogo}
               alt="CSWATMS Sanitation Emblem"
-              className="w-24 h-24 object-contain"
+              className="w-16 h-16 object-contain"
               style={{ filter: "brightness(0) invert(1)" }}
             />
           </div>
@@ -91,15 +80,7 @@ const Login = () => {
           </p>
         </div>
 
-        {/* Glass-morphism login card */}
-        <div
-          className="w-full rounded-2xl p-8 shadow-2xl"
-          style={{
-            background: "rgba(255,255,255,0.97)",
-            boxShadow:
-              "0 25px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.15)",
-          }}
-        >
+        <div className="w-full rounded-xl p-8 bg-white shadow-xl">
           {/* Card heading */}
           <div className="mb-7 text-center">
             <h2 className="text-on-surface font-semibold text-xl leading-snug">

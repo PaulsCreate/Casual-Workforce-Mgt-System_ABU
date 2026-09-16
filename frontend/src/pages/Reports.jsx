@@ -5,7 +5,6 @@ import { getLocationsForSupervisor } from "../api/attendanceApi";
 import {
   generateReport,
   generateBatchReport,
-  getDivisionAggregateReport,
   submitReport as submitReportApi,
   submitBatchReports as submitBatchReportsApi,
   verifyReport as verifyReportApi,
@@ -255,7 +254,7 @@ const Reports = () => {
       canvas.getContext("2d").drawImage(img, 0, 0);
       const dataUrl = canvas.toDataURL("image/png");
       doc.addImage(dataUrl, "PNG", pageW / 2 - 11, 6, 22, 22);
-    } catch (_) {}
+    } catch {}
 
     // Title
     doc.setFontSize(12);

@@ -5,7 +5,6 @@ import { exportToCSV } from "../utils/exportUtils";
 const WorkerImportModal = ({ isOpen, onClose, onSuccess, existingWorkers = [], locations = [] }) => {
   const [file, setFile] = useState(null);
   const [parsedRows, setParsedRows] = useState([]);
-  const [validationErrors, setValidationErrors] = useState([]);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
   const [filterMode, setFilterMode] = useState("all"); // "all" | "valid" | "errors"
@@ -68,7 +67,7 @@ const WorkerImportModal = ({ isOpen, onClose, onSuccess, existingWorkers = [], l
       try {
         const text = evt.target.result;
         parseCSVText(text);
-      } catch (err) {
+      } catch {
         setError("Failed to parse CSV file. Ensure it is a valid format.");
       }
     };
@@ -88,7 +87,6 @@ const WorkerImportModal = ({ isOpen, onClose, onSuccess, existingWorkers = [], l
     const seenInFileStaffIds = new Set();
 
     const dataRows = [];
-    const errorsList = [];
 
     // Parse header to find column indexes
     const headerCols = lines[0].split(",").map((c) => c.replace(/^["']|["']$/g, "").trim().toLowerCase());
@@ -169,13 +167,9 @@ const WorkerImportModal = ({ isOpen, onClose, onSuccess, existingWorkers = [], l
       };
 
       dataRows.push(parsedItem);
-      if (rowErrors.length > 0) {
-        errorsList.push({ row: i + 1, errors: rowErrors });
-      }
     }
 
     setParsedRows(dataRows);
-    setValidationErrors(errorsList);
   };
 
   // ── Execute Batch Import ──────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getDivisions } from "../api/hierarchyApi";
 import { getUsers, createUser, deactivateUser, reactivateUser, resetUserPasswordApi } from "../api/usersApi";
@@ -41,7 +41,7 @@ const Users = () => {
   const [resetResult, setResetResult] = useState(null);
   const [copied, setCopied] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -57,9 +57,9 @@ const Users = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const filtered = users.filter((u) => {
     const matchSearch =
@@ -130,7 +130,7 @@ const Users = () => {
     try {
       setResetLoading(true);
       setError("");
-      const res = await resetUserPasswordApi(resetTarget.id, {
+      await resetUserPasswordApi(resetTarget.id, {
         new_password: resetTempPass,
         must_change_password: resetMustChange,
       });

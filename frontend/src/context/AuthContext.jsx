@@ -6,7 +6,10 @@ const AuthContext = createContext(null);
 
 function decodeToken(token) {
   try {
-    const base64Url = token.split(".")[1];
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+
+    const base64Url = parts[1];
     const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
     const jsonPayload = decodeURIComponent(
       window
@@ -15,11 +18,30 @@ function decodeToken(token) {
         .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
         .join("")
     );
-    return JSON.parse(jsonPayload);
+    const payload = JSON.parse(jsonPayload);
+    if (!payload.id || !payload.username || !payload.role || !Number.isFinite(payload.exp)) {
+      return null;
+    }
+    return payload;
   } catch (error) {
     console.error("Failed to decode token", error);
     return null;
   }
+}
+
+function userFromToken(token) {
+  const decoded = decodeToken(token);
+  if (!decoded || Date.now() >= decoded.exp * 1000) return null;
+
+  return {
+    id: decoded.id,
+    full_name: decoded.full_name,
+    username: decoded.username,
+    role: decoded.role,
+    division_id: decoded.division_id,
+    division_name: decoded.division_name,
+    must_change_password: Boolean(decoded.must_change_password),
+  };
 }
 
 export const AuthProvider = ({ children }) => {
@@ -28,30 +50,12 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (token) {
-      const decoded = decodeToken(token);
-      if (decoded) {
-        // Simple token expiration check
-        const expiry = decoded.exp * 1000;
-        if (Date.now() > expiry) {
-          logout();
-        } else {
-          setUser({
-            id: decoded.id,
-            full_name: decoded.full_name,
-            username: decoded.username,
-            role: decoded.role,
-            division_id: decoded.division_id,
-            division_name: decoded.division_name,
-            must_change_password: Boolean(decoded.must_change_password),
-          });
-        }
-      } else {
-        logout();
-      }
-    } else {
-      setUser(null);
+    const restoredUser = token ? userFromToken(token) : null;
+    if (token && !restoredUser) {
+      localStorage.removeItem("token");
+      setToken(null);
     }
+    setUser(restoredUser);
     setLoading(false);
   }, [token]);
 
@@ -63,8 +67,6 @@ export const AuthProvider = ({ children }) => {
       setToken(data.token);
       setUser(data.user);
       return data.user;
-    } catch (error) {
-      throw error;
     } finally {
       setLoading(false);
     }
@@ -78,18 +80,7 @@ export const AuthProvider = ({ children }) => {
     if (updatedUser) {
       setUser(updatedUser);
     } else if (newToken) {
-      const decoded = decodeToken(newToken);
-      if (decoded) {
-        setUser({
-          id: decoded.id,
-          full_name: decoded.full_name,
-          username: decoded.username,
-          role: decoded.role,
-          division_id: decoded.division_id,
-          division_name: decoded.division_name,
-          must_change_password: Boolean(decoded.must_change_password),
-        });
-      }
+      setUser(userFromToken(newToken));
     }
   };
 
@@ -99,6 +90,10 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const handleForcedPasswordClose = () => {
+    logout();
+  };
+
   return (
     <AuthContext.Provider value={{ user, token, login, logout, updateUserToken, loading }}>
       {children}
@@ -106,7 +101,7 @@ export const AuthProvider = ({ children }) => {
         <ChangePasswordModal
           isOpen={true}
           isForced={true}
-          onClose={() => {}}
+          onClose={handleForcedPasswordClose}
         />
       )}
     </AuthContext.Provider>

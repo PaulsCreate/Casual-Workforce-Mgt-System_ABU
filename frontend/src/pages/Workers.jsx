@@ -51,7 +51,7 @@ const Workers = () => {
 
   const navigate = useNavigate();
 
-  const loadWorkers = async () => {
+  const loadWorkers = async (isActive = () => true) => {
     try {
       setLoading(true);
       setError("");
@@ -59,18 +59,24 @@ const Workers = () => {
         getWorkers(),
         getLocations().catch(() => []),
       ]);
+      if (!isActive()) return;
       setWorkers(workerData);
       setLocations(locData);
     } catch (err) {
       console.error(err);
+      if (!isActive()) return;
       setError("Failed to fetch workforce directory");
     } finally {
-      setLoading(false);
+      if (isActive()) setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadWorkers();
+    let mounted = true;
+    loadWorkers(() => mounted);
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleOpenRegisterModal = async () => {

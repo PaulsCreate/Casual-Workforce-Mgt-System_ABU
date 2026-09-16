@@ -26,9 +26,7 @@ const DivisionBanner = ({ subtitle, className = "" }) => {
         unitTitle: "Hall Administration Unit (Hostels)",
         description: subtitle || "Hostel Regions",
         icon: "apartment",
-        colorClass: "from-[#004120] to-[#0A5A30]",
-        accentBg: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-        badge: "Hostels & Halls of Residence",
+        accentClass: "border-l-amber-600",
       };
     }
 
@@ -44,9 +42,7 @@ const DivisionBanner = ({ subtitle, className = "" }) => {
           subtitle ||
           "Workforce across Faculties, Centers & Administrative Units",
         icon: "health_and_safety",
-        colorClass: "from-[#0B3B2B] to-[#125841]",
-        accentBg: "bg-teal-500/20 text-teal-300 border-teal-500/30",
-        badge: "Academic & Central Facilities",
+        accentClass: "border-l-teal-700",
       };
     }
 
@@ -58,9 +54,7 @@ const DivisionBanner = ({ subtitle, className = "" }) => {
           subtitle ||
           "Consolidated oversight across Student Affairs (Hostels) & University Health Services (Faculties)",
         icon: "verified_user",
-        colorClass: "from-[#003419] to-[#084A26]",
-        // accentBg: "bg-amber-400/20 text-amber-200 border-amber-400/30",
-        // badge: "Global University-Wide Master Scope",
+        accentClass: "border-l-primary",
       };
     }
 
@@ -72,9 +66,7 @@ const DivisionBanner = ({ subtitle, className = "" }) => {
         subtitle ||
         "Casual Workforce Attendance and Operational Task Management",
       icon: "domain",
-      colorClass: "from-[#004120] to-[#0D542E]",
-      accentBg: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-      badge: "Operating Division",
+      accentClass: "border-l-primary",
     };
   };
 
@@ -82,70 +74,45 @@ const DivisionBanner = ({ subtitle, className = "" }) => {
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl bg-gradient-to-r ${config.colorClass} text-white shadow-md border border-white/10 p-5 md:p-6 ${className}`}
+      className={`rounded-xl border border-outline-variant border-l-4 ${config.accentClass} bg-surface p-5 md:p-6 shadow-sm ${className}`}
     >
-      {/* Subtle Background Watermark Crest Pattern */}
-      <div className="absolute right-0 top-0 bottom-0 opacity-5 flex items-center pr-6 pointer-events-none select-none">
-        <span className="material-symbols-outlined text-[140px] leading-none">
-          {config.icon}
-        </span>
-      </div>
-
-      <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* Left: Division Identity & Unit */}
-        <div className="flex items-start md:items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shadow-inner flex-shrink-0">
-            <span className="material-symbols-outlined text-[28px]">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="flex items-start gap-3.5 min-w-0">
+          <div className="w-10 h-10 rounded-lg bg-primary/8 text-primary flex items-center justify-center flex-shrink-0">
+            <span className="material-symbols-outlined text-[23px]">
               {config.icon}
             </span>
           </div>
 
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              <span className="text-[11px] font-bold tracking-wider uppercase text-emerald-200/90 font-mono">
-                {config.title}
-              </span>
-              <span className="text-white/40">·</span>
-              <span
-                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${config.accentBg}`}
-              >
-                {config.badge}
-              </span>
-            </div>
-
-            <h2 className="text-xl md:text-2xl font-bold tracking-tight text-white leading-snug">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+              {config.title}
+            </p>
+            <h2 className="text-lg md:text-xl font-semibold text-on-surface leading-snug mt-0.5">
               {config.unitTitle}
             </h2>
-
-            <p className="text-xs md:text-sm text-emerald-100/80 mt-1 max-w-2xl leading-relaxed">
+            <p className="text-sm text-on-surface-variant mt-1 max-w-2xl leading-relaxed">
               {config.description}
             </p>
           </div>
         </div>
 
-        {/* Right: Operational Session Metadata */}
-        <div className="flex md:flex-col items-center md:items-end justify-between gap-2 pt-3 md:pt-0 border-t md:border-t-0 border-white/10">
-          <div className="text-left md:text-right">
-            <p className="text-[10px] text-emerald-200/70 font-medium uppercase tracking-wider">
-              Active User Session
-            </p>
-            <p className="text-sm font-semibold text-white truncate">
-              {user?.full_name || user?.username}
-            </p>
-          </div>
-
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 border border-white/15 text-[11px] font-medium text-emerald-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>
-              {isGeneralAdmin
-                ? "Full Admin Authority"
-                : isDivisionAdmin
-                  ? "Division Head Authority"
-                  : isSupervisor
-                    ? "Station Supervisor"
-                    : "Authenticated"}
-            </span>
-          </div>
+        <div className="md:text-right md:border-l md:border-outline-variant md:pl-5">
+          <p className="text-[11px] text-on-surface-variant uppercase tracking-wide">
+            Signed in as
+          </p>
+          <p className="text-sm font-semibold text-on-surface truncate max-w-[220px]">
+            {user?.full_name || user?.username}
+          </p>
+          <p className="text-xs text-primary mt-0.5">
+            {isGeneralAdmin
+              ? "General Administrator"
+              : isDivisionAdmin
+                ? "Division Administrator"
+                : isSupervisor
+                  ? "Supervisor"
+                  : "Authenticated user"}
+          </p>
         </div>
       </div>
     </div>

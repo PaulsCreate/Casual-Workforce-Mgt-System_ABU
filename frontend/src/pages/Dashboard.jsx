@@ -20,22 +20,28 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const fetchStats = async () => {
+  const fetchStats = async (isActive = () => true) => {
     try {
       setLoading(true);
       setError("");
       const data = await getDashboardStats();
+      if (!isActive()) return;
       setStats(data);
     } catch (err) {
       console.error(err);
+      if (!isActive()) return;
       setError("Failed to fetch dashboard metrics");
     } finally {
-      setLoading(false);
+      if (isActive()) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStats();
+    let mounted = true;
+    fetchStats(() => mounted);
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const todayStr = new Date().toLocaleDateString("en-US", {
@@ -87,7 +93,7 @@ const Dashboard = () => {
           {/* Quick Stats Bento Grid */}
           <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Workers Stat */}
-            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-default flex flex-col justify-between">
+            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <span className="font-label-md text-on-surface-variant font-medium">
                   Active Workforce
@@ -107,7 +113,7 @@ const Dashboard = () => {
             </div>
 
             {/* Attendance Stat */}
-            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-default flex flex-col justify-between">
+            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <span className="font-label-md text-on-surface-variant font-medium">
                   Attendance Today
@@ -127,7 +133,7 @@ const Dashboard = () => {
             </div>
 
             {/* Pending Approvals */}
-            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-default flex flex-col justify-between">
+            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <span className="font-label-md text-on-surface-variant font-medium">
                   Pending Transfers
@@ -147,7 +153,7 @@ const Dashboard = () => {
             </div>
 
             {/* Locations Stat */}
-            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-default flex flex-col justify-between">
+            <div className="bg-white border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <span className="font-label-md text-on-surface-variant font-medium">
                   Deployed Locations

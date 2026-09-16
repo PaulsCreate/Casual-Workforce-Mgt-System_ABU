@@ -283,7 +283,7 @@ const Attendance = () => {
         assignment_id: worker.active_assignment_id,
         attendance_date: selectedDate,
       });
-    } catch (err) {
+    } catch {
       // Rollback
       setPresentSet((prev) => {
         const next = new Set(prev);
@@ -308,7 +308,7 @@ const Attendance = () => {
         assignment_id: worker.active_assignment_id,
         attendance_date: selectedDate,
       });
-    } catch (err) {
+    } catch {
       setPresentSet((prev) => new Set([...prev, worker.staff_id]));
       addToast(`Could not unmark ${worker.full_name.split(" ")[0]}`, "error");
     }
@@ -335,7 +335,7 @@ const Attendance = () => {
       addToast(
         `Marked ${toMark.length} worker(s) present${groupName ? ` — ${groupName}` : ""}`,
       );
-    } catch (err) {
+    } catch {
       // Rollback
       setPresentSet((prev) => {
         const next = new Set(prev);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { getWorkerDossier, uploadWorkerPhoto, updateWorker } from "../api/workersApi";
 import { getImageUrl } from "../utils/imageUrl";
 
@@ -13,7 +13,7 @@ const WorkerDossierModal = ({ isOpen, workerId, onClose, onWorkerUpdated }) => {
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
 
-  const loadDossier = async () => {
+  const loadDossier = useCallback(async () => {
     if (!workerId) return;
     try {
       setLoading(true);
@@ -36,7 +36,7 @@ const WorkerDossierModal = ({ isOpen, workerId, onClose, onWorkerUpdated }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workerId]);
 
   useEffect(() => {
     if (isOpen && workerId) {
@@ -44,7 +44,7 @@ const WorkerDossierModal = ({ isOpen, workerId, onClose, onWorkerUpdated }) => {
       setEditing(false);
       setSuccess("");
     }
-  }, [isOpen, workerId]);
+  }, [isOpen, workerId, loadDossier]);
 
   if (!isOpen) return null;
 
@@ -67,7 +67,7 @@ const WorkerDossierModal = ({ isOpen, workerId, onClose, onWorkerUpdated }) => {
     setSuccess("");
 
     try {
-      const res = await uploadWorkerPhoto(workerId, formData);
+      await uploadWorkerPhoto(workerId, formData);
       setSuccess("Passport photo updated successfully!");
       if (onWorkerUpdated) onWorkerUpdated();
       loadDossier();
@@ -103,7 +103,6 @@ const WorkerDossierModal = ({ isOpen, workerId, onClose, onWorkerUpdated }) => {
   const worker = dossierData?.worker;
   const assignments = dossierData?.assignments || [];
   const stats = dossierData?.attendance_stats || { total_present: 0, total_recorded_days: 0, total_months_active: 0 };
-  const attRate = stats.total_recorded_days > 0 ? Math.round((stats.total_present / stats.total_recorded_days) * 100) : 0;
 
   // Format initials
   const initials = worker?.full_name

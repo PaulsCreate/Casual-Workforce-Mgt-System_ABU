@@ -2,9 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
   getPendingReports,
-  verifyReport,
   verifyBatchReports,
-  generateReport,
   generateBatchReport,
 } from "../api/reportsApi";
 import { exportToCSV } from "../utils/exportUtils";
@@ -155,7 +153,7 @@ const PendingReports = () => {
         canvas.height = img.naturalHeight;
         canvas.getContext("2d").drawImage(img, 0, 0);
         doc.addImage(canvas.toDataURL("image/png"), "PNG", pageW / 2 - 15, 8, 30, 30);
-      } catch (_) {}
+      } catch {}
 
       // Title
       doc.setFontSize(13);

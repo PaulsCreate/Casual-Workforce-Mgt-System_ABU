@@ -35,8 +35,8 @@ const MobileHeader = ({ title }) => {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-xs uppercase">
-            {user?.username?.substring(0, 2) || "US"}
+          <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <span className="material-symbols-outlined text-[19px]">person</span>
           </div>
         </div>
       </header>

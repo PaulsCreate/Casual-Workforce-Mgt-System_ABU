@@ -57,26 +57,22 @@ const Login = () => {
       {/* Card */}
       <main className="relative z-10 w-full max-w-[440px] flex flex-col items-center">
         <div className="mb-6 flex flex-col items-center">
-          <div
-            className="w-24 h-24 flex items-center justify-center rounded-xl mb-4 shadow-lg"
-            style={{
-              background: "linear-gradient(145deg, #004120, #145a32)",
-            }}
-          >
+          <div className="w-20 h-20 flex items-center justify-center rounded-lg mb-4 bg-white border border-white/30 shadow-lg p-2">
             <img
               src={abuLogo}
-              alt="CSWATMS Sanitation Emblem"
-              className="w-16 h-16 object-contain"
-              style={{ filter: "brightness(0) invert(1)" }}
+              alt="Ahmadu Bello University crest"
+              className="w-full h-full object-contain"
             />
           </div>
 
-          {/* System title above the card */}
           <h1 className="text-white font-bold text-3xl tracking-tight text-center drop-shadow-md">
             CSWATMS
           </h1>
-          <p className="text-white/70 text-sm tracking-widest uppercase text-center mt-1">
-            Ahmadu Bello University · Zaria
+          <p className="text-white/70 text-sm text-center mt-1">
+            Casual Sanitation Workforce Management System
+          </p>
+          <p className="text-white/60 text-xs text-center mt-0.5">
+            Ahmadu Bello University, Zaria
           </p>
         </div>
 
@@ -118,7 +114,7 @@ const Login = () => {
                   id="username"
                   type="text"
                   autoComplete="username"
-                  placeholder="Enter institutional ID"
+                  placeholder="Username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading}
@@ -193,9 +189,9 @@ const Login = () => {
           {/* Footer note */}
           <div className="mt-7 pt-5 border-t border-outline-variant flex flex-col items-center gap-1">
             <div className="flex items-center gap-1.5 text-outline">
-              <span className="material-symbols-outlined text-[16px]">
+              {/* <span className="material-symbols-outlined text-[16px]">
                 shield
-              </span>
+              </span> */}
               <span className="font-label-md text-label-md">
                 Institutional Access Only
               </span>

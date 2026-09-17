@@ -651,9 +651,9 @@ const Reports = () => {
                   value={reportScope}
                   onChange={(e) => setReportScope(e.target.value)}
                 >
-                  <option value="all_hostels">🏢 All Hostels Consolidated (Master)</option>
-                  <option value="hostel">🏢 Single Hostel Consolidated</option>
-                  <option value="single_block">📍 Single Block / Location</option>
+                  <option value="all_hostels">All hostels</option>
+                  <option value="hostel">Single hostel</option>
+                  <option value="single_block">Single block or location</option>
                 </select>
               </div>
 
@@ -670,7 +670,7 @@ const Reports = () => {
                   >
                     {uniqueHostels.map((h) => (
                       <option key={h} value={h}>
-                        🏢 {h} ({locations.filter((l) => l.name.startsWith(h)).length} blocks)
+                        {h} ({locations.filter((l) => l.name.startsWith(h)).length} blocks)
                       </option>
                     ))}
                   </select>
@@ -687,7 +687,7 @@ const Reports = () => {
                   >
                     {locations.map((loc) => (
                       <option key={loc.id} value={loc.id}>
-                        📍 {loc.name}
+                        {loc.name}
                       </option>
                     ))}
                   </select>
@@ -699,7 +699,7 @@ const Reports = () => {
                   </label>
                   <div className="p-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-xs font-semibold text-primary flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm">domain</span>
-                    <span>All {uniqueHostels.length} Hostels & Units Combined</span>
+                    <span>All {uniqueHostels.length} hostels and units combined</span>
                   </div>
                 </div>
               )}
@@ -716,7 +716,7 @@ const Reports = () => {
                 >
                   {MONTHS.map((m) => (
                     <option key={m.value} value={m.value}>
-                      📅 {m.name}
+                      {m.name}
                     </option>
                   ))}
                 </select>
@@ -725,7 +725,7 @@ const Reports = () => {
               {/* 4. Year */}
               <div className="space-y-1">
                 <label className="font-label-md text-xs font-bold text-on-surface uppercase tracking-wider block">
-                  Academic Year
+                  Reporting Year
                 </label>
                 <select
                   className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none font-medium"
@@ -795,36 +795,7 @@ const Reports = () => {
             ) : (
               <div className="space-y-6 p-4 sm:p-6">
 
-                {/* Quick-Jump Hostel Navigation Bar when multiple hostels are present */}
-                {Object.keys(workersByHostel).length > 1 && (
-                  <div className="bg-surface-container-low border border-outline-variant rounded-xl p-3.5 space-y-2">
-                    <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
-                      <span className="material-symbols-outlined text-sm">domain</span>
-                      <span>Hostel Quick-Index ({Object.keys(workersByHostel).length} Hostels & Units)</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {Object.entries(workersByHostel)
-                        .sort(([a], [b]) => a.localeCompare(b))
-                        .map(([hName, hWorkers], idx) => (
-                          <a
-                            key={hName}
-                            href={`#hostel-section-${idx}`}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-outline-variant hover:border-primary hover:text-primary transition-all text-xs font-semibold text-on-surface shadow-2xs group"
-                          >
-                            <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold group-hover:bg-primary group-hover:text-white transition-colors">
-                              {idx + 1}
-                            </span>
-                            <span>{hName}</span>
-                            <span className="px-1.5 py-0.2 rounded-full bg-surface-container text-on-surface-variant text-[10px]">
-                              {hWorkers.length}
-                            </span>
-                          </a>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Render workers grouped by Hostel with clear visual demarcation */}
+                {/* Render workers grouped by hostel */}
                 {Object.entries(workersByHostel)
                   .sort(([a], [b]) => a.localeCompare(b))
                   .map(([hostelName, hostelWorkers], hostelIdx) => {
@@ -848,40 +819,27 @@ const Reports = () => {
                       <div
                         key={hostelName}
                         id={`hostel-section-${hostelIdx}`}
-                        className="border-2 border-outline-variant/80 rounded-2xl overflow-hidden shadow-xs hover:border-primary/40 transition-colors scroll-mt-20 bg-white"
+                        className="border border-outline-variant rounded-xl overflow-hidden scroll-mt-20 bg-white"
                       >
-                        {/* Distinct Hostel Section Header Banner */}
-                        <div className="bg-gradient-to-r from-surface-container via-surface-container-low to-white px-5 py-4 border-b-2 border-outline-variant flex flex-wrap items-center justify-between gap-3 border-l-6 border-l-primary">
+                        <div className="bg-surface-container-low px-5 py-4 border-b border-outline-variant flex flex-wrap items-center justify-between gap-3 border-l-4 border-l-primary">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-sm shadow-2xs">
-                              {hostelIdx + 1 < 10 ? `0${hostelIdx + 1}` : hostelIdx + 1}
-                            </div>
                             <div>
                               <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-base text-on-surface flex items-center gap-1.5">
-                                  <span className="material-symbols-outlined text-primary text-lg">apartment</span>
-                                  {hostelName}
-                                </h3>
-                                <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-xs border border-primary/20">
-                                  {hostelWorkers.length} Worker{hostelWorkers.length !== 1 ? "s" : ""}
+                                <h3 className="font-semibold text-base text-on-surface">{hostelName}</h3>
+                                <span className="text-xs text-on-surface-variant">
+                                  {hostelWorkers.length} worker{hostelWorkers.length !== 1 ? "s" : ""}
                                 </span>
                               </div>
                               <p className="text-xs text-on-surface-variant mt-0.5">
-                                Operating Blocks: <span className="font-medium text-on-surface">{uniqueBlocks.join(", ") || "General"}</span>
+                                Blocks: <span className="font-medium text-on-surface">{uniqueBlocks.join(", ") || "General"}</span>
                               </p>
                             </div>
                           </div>
 
-                          {/* Hostel Metrics Pills */}
-                          <div className="flex flex-wrap items-center gap-2 text-xs">
-                            <div className="px-3 py-1 rounded-lg bg-surface-container border border-outline-variant/60 text-on-surface flex items-center gap-1.5">
-                              <span className="material-symbols-outlined text-sm text-primary">done_all</span>
-                              <span>Total Shifts: <strong className="text-primary font-bold">{hostelDaysWorked} days</strong></span>
-                            </div>
-                            <div className="px-3 py-1 rounded-lg bg-surface-container border border-outline-variant/60 text-on-surface flex items-center gap-1.5">
-                              <span className="material-symbols-outlined text-sm text-primary">percent</span>
-                              <span>Avg Presence: <strong className="font-bold text-primary">{hostelAvgRate}%</strong></span>
-                            </div>
+                          <div className="text-xs text-on-surface-variant">
+                            <span>{hostelDaysWorked} days worked</span>
+                            <span className="mx-2 text-outline">·</span>
+                            <span>{hostelAvgRate}% average attendance</span>
                           </div>
                         </div>
 
@@ -894,8 +852,6 @@ const Reports = () => {
                                 <th className="py-3 px-3">Staff ID</th>
                                 <th className="py-3 px-3">Worker Full Name</th>
                                 <th className="py-3 px-3">Block / Station</th>
-                                <th className="py-3 px-3">National ID (NIN)</th>
-                                <th className="py-3 px-3">Phone Contact</th>
                                 <th className="py-3 px-3 text-center">Days Worked</th>
                                 <th className="py-3 px-3 text-center">Working Days</th>
                                 <th className="py-3 px-3 text-center">Attendance %</th>
@@ -914,8 +870,6 @@ const Reports = () => {
                                     <td className="py-2.5 px-3 font-mono font-semibold text-primary">{w.staff_id}</td>
                                     <td className="py-2.5 px-3 font-semibold text-on-surface">{w.full_name}</td>
                                     <td className="py-2.5 px-3 text-on-surface-variant font-medium">{blockName}</td>
-                                    <td className="py-2.5 px-3 font-mono text-on-surface-variant">{w.national_id_nin || "—"}</td>
-                                    <td className="py-2.5 px-3 text-on-surface-variant">{w.phone_number || "—"}</td>
                                     <td className="py-2.5 px-3 text-center font-bold text-primary">{w.days_worked}</td>
                                     <td className="py-2.5 px-3 text-center font-mono text-on-surface-variant">{daysInMonth}</td>
                                     <td className="py-2.5 px-3 text-center font-semibold">

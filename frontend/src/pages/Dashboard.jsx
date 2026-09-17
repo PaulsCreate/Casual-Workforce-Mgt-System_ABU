@@ -44,9 +44,9 @@ const Dashboard = () => {
     };
   }, []);
 
-  const todayStr = new Date().toLocaleDateString("en-US", {
-    month: "short",
+  const todayStr = new Date().toLocaleDateString("en-GB", {
     day: "numeric",
+    month: "long",
     year: "numeric",
   });
 
@@ -67,11 +67,11 @@ const Dashboard = () => {
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <div className="bg-surface-container-high rounded-full px-4 py-2 flex items-center gap-2">
-              <span className="material-symbols-outlined text-on-surface-variant text-[18px]">
+            <div className="flex items-center gap-2 text-on-surface-variant">
+              <span className="material-symbols-outlined text-[18px]">
                 calendar_today
               </span>
-              <span className="font-label-md text-label-md text-on-surface-variant font-semibold">
+              <span className="font-label-md text-label-md font-medium">
                 {todayStr}
               </span>
             </div>

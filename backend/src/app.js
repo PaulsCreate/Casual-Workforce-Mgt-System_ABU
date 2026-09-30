@@ -35,7 +35,7 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use("/api/auth", authRoutes);
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "Server Running Well.." });
+  res.json({ status: "Server Up & Running Well.." });
 });
 
 app.use("/api/divisions", divisionRoutes);

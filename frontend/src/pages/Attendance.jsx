@@ -46,15 +46,22 @@ function AbsenceModal({ worker, date, onClose, onSave, existingReason }) {
   const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
 
+  const PRESET_REASONS = [
+    "Sick / Medical",
+    "Permission Granted",
+    "Off-Duty / Shift Off",
+    "Unexcused Absence",
+  ];
+
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 80);
   }, []);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!reason.trim()) return;
+  async function handleSubmit(e, directReason) {
+    if (e) e.preventDefault();
+    const chosen = (directReason !== undefined ? directReason : reason).trim() || "Absent (Unspecified)";
     setSaving(true);
-    await onSave(reason.trim());
+    await onSave(chosen);
     setSaving(false);
   }
 
@@ -71,7 +78,7 @@ function AbsenceModal({ worker, date, onClose, onSave, existingReason }) {
         <div className="flex items-start justify-between">
           <div>
             <h3 className="font-bold text-on-surface text-base">
-              Log Absence Reason
+              Mark Worker Absent
             </h3>
             <p className="text-xs text-on-surface-variant mt-0.5">
               <span className="font-semibold text-on-surface">
@@ -89,22 +96,44 @@ function AbsenceModal({ worker, date, onClose, onSave, existingReason }) {
           </button>
         </div>
 
-        {/* Note */}
-        {/* <p className="text-[11px] text-on-surface-variant bg-surface-container-low rounded-lg px-3 py-2 flex items-start gap-1.5">
-          <span className="material-symbols-outlined text-[14px] mt-0.5 shrink-0">info</span>
-          This is an audit note only. Pay register remains unaffected.
-        </p> */}
+        {/* Quick select chips */}
+        <div>
+          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-2">
+            Quick Reason
+          </label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {PRESET_REASONS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setReason(preset)}
+                className={`text-xs px-2.5 py-1.5 rounded-xl border text-left truncate transition-all ${
+                  reason === preset
+                    ? "bg-amber-100 text-amber-900 border-amber-300 font-semibold"
+                    : "bg-surface-container-low border-outline-variant/60 text-on-surface-variant hover:border-amber-300 hover:text-amber-800"
+                }`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-3">
-          <textarea
-            ref={inputRef}
-            rows={3}
-            placeholder="e.g. Reported sick, supervisor informed at 7:30am…"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className="w-full border border-outline-variant rounded-xl px-3.5 py-2.5 text-sm text-on-surface resize-none focus:border-primary focus:ring-1 focus:ring-primary outline-none placeholder:text-on-surface-variant/60 font-body-md"
-          />
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">
+              Or Custom Remark (Optional)
+            </label>
+            <textarea
+              ref={inputRef}
+              rows={2}
+              placeholder="e.g. Reported sick, supervisor informed at 7:30am…"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="w-full border border-outline-variant rounded-xl px-3.5 py-2 text-sm text-on-surface resize-none focus:border-amber-600 focus:ring-1 focus:ring-amber-600 outline-none placeholder:text-on-surface-variant/60 font-body-md"
+            />
+          </div>
           <div className="flex gap-2">
             <button
               type="button"
@@ -115,8 +144,8 @@ function AbsenceModal({ worker, date, onClose, onSave, existingReason }) {
             </button>
             <button
               type="submit"
-              disabled={saving || !reason.trim()}
-              className="flex-1 px-4 py-2 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-[#0E4526] transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              disabled={saving}
+              className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
             >
               {saving ? (
                 <>
@@ -126,9 +155,9 @@ function AbsenceModal({ worker, date, onClose, onSave, existingReason }) {
               ) : (
                 <>
                   <span className="material-symbols-outlined text-[16px]">
-                    save
+                    cancel
                   </span>
-                  {existingReason ? "Update" : "Save"}
+                  Confirm Absent
                 </>
               )}
             </button>
@@ -273,6 +302,7 @@ const Attendance = () => {
     // Optimistic update
     setPresentSet((prev) => new Set([...prev, worker.staff_id]));
     // Remove any absence log optimistically
+    const previousAbsence = absenceMap[worker.staff_id];
     setAbsenceMap((prev) => {
       const next = { ...prev };
       delete next[worker.staff_id];
@@ -283,13 +313,25 @@ const Attendance = () => {
         assignment_id: worker.active_assignment_id,
         attendance_date: selectedDate,
       });
-    } catch {
+      if (previousAbsence) {
+        removeAbsenceLog({
+          assignment_id: worker.active_assignment_id,
+          attendance_date: selectedDate,
+        }).catch(() => {});
+      }
+    } catch (err) {
       // Rollback
       setPresentSet((prev) => {
         const next = new Set(prev);
         next.delete(worker.staff_id);
         return next;
       });
+      if (previousAbsence) {
+        setAbsenceMap((prev) => ({
+          ...prev,
+          [worker.staff_id]: previousAbsence,
+        }));
+      }
       const msg = err.response?.data?.error || "Failed to mark attendance";
       addToast(`${worker.full_name.split(" ")[0]}: ${msg}`, "error");
     }
@@ -317,7 +359,10 @@ const Attendance = () => {
   /* ── Mark all in batch ── */
   const handleMarkBatch = async (workersToMark, groupName = "") => {
     const toMark = workersToMark.filter(
-      (w) => w.active_assignment_id && !presentSet.has(w.staff_id),
+      (w) =>
+        w.active_assignment_id &&
+        !presentSet.has(w.staff_id) &&
+        !absenceMap[w.staff_id],
     );
     if (toMark.length === 0) return;
     // Optimistic
@@ -333,7 +378,7 @@ const Attendance = () => {
         attendance_date: selectedDate,
       });
       addToast(
-        `Marked ${toMark.length} worker(s) present${groupName ? ` — ${groupName}` : ""}`,
+        `Marked ${toMark.length} pending worker(s) present${groupName ? ` — ${groupName}` : ""}`,
       );
     } catch {
       // Rollback
@@ -352,22 +397,51 @@ const Attendance = () => {
   const handleSaveAbsence = async (reason) => {
     const worker = absenceModalWorker;
     if (!worker?.active_assignment_id) return;
+    const finalReason = reason?.trim() || "Absent (Unspecified)";
+    const wasPresent = presentSet.has(worker.staff_id);
+
+    // If was marked present, remove present state optimistically
+    if (wasPresent) {
+      setPresentSet((prev) => {
+        const next = new Set(prev);
+        next.delete(worker.staff_id);
+        return next;
+      });
+    }
+
+    // Set absence map optimistically
+    setAbsenceMap((prev) => ({
+      ...prev,
+      [worker.staff_id]: {
+        reason: finalReason,
+        assignment_id: worker.active_assignment_id,
+      },
+    }));
+
     try {
+      if (wasPresent) {
+        unmarkAttendance({
+          assignment_id: worker.active_assignment_id,
+          attendance_date: selectedDate,
+        }).catch(() => {});
+      }
       await logAbsence({
         assignment_id: worker.active_assignment_id,
         absence_date: selectedDate,
-        reason,
+        reason: finalReason,
       });
-      setAbsenceMap((prev) => ({
-        ...prev,
-        [worker.staff_id]: {
-          reason,
-          assignment_id: worker.active_assignment_id,
-        },
-      }));
-      addToast(`Absence reason logged for ${worker.full_name.split(" ")[0]}`);
+      addToast(`Marked absent: ${worker.full_name.split(" ")[0]} (${finalReason})`);
       setAbsenceModalWorker(null);
     } catch (err) {
+      // Rollback
+      if (wasPresent) {
+        setPresentSet((prev) => new Set([...prev, worker.staff_id]));
+      }
+      setAbsenceMap((prev) => {
+        const next = { ...prev };
+        delete next[worker.staff_id];
+        return next;
+      });
       addToast(err.response?.data?.error || "Failed to log absence", "error");
     }
   };
@@ -375,19 +449,26 @@ const Attendance = () => {
   /* ── Remove absence log ── */
   const handleRemoveAbsence = async (worker) => {
     if (!worker.active_assignment_id) return;
+    const previousAbsence = absenceMap[worker.staff_id];
+    setAbsenceMap((prev) => {
+      const next = { ...prev };
+      delete next[worker.staff_id];
+      return next;
+    });
     try {
       await removeAbsenceLog({
         assignment_id: worker.active_assignment_id,
         absence_date: selectedDate,
       });
-      setAbsenceMap((prev) => {
-        const next = { ...prev };
-        delete next[worker.staff_id];
-        return next;
-      });
-      addToast("Absence note removed");
+      addToast(`Absence cleared for ${worker.full_name.split(" ")[0]}`);
     } catch {
-      addToast("Failed to remove absence note", "error");
+      if (previousAbsence) {
+        setAbsenceMap((prev) => ({
+          ...prev,
+          [worker.staff_id]: previousAbsence,
+        }));
+      }
+      addToast("Failed to remove absence record", "error");
     }
   };
 
@@ -410,7 +491,10 @@ const Attendance = () => {
   const totalPresent = relevantWorkers.filter((w) =>
     presentSet.has(w.staff_id),
   ).length;
-  const totalUnmarked = totalAssigned - totalPresent;
+  const totalAbsent = relevantWorkers.filter(
+    (w) => !presentSet.has(w.staff_id) && !!absenceMap[w.staff_id],
+  ).length;
+  const totalUnmarked = totalAssigned - totalPresent - totalAbsent;
 
   return (
     <div className="bg-background text-on-background font-body-md min-h-screen flex flex-col md:flex-row">
@@ -428,15 +512,21 @@ const Attendance = () => {
           </div>
           <div className="flex items-center gap-3">
             {totalAssigned > 0 && (
-              <span
-                className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  totalPresent === totalAssigned
-                    ? "bg-primary/10 text-primary"
-                    : "bg-surface-container-high text-on-surface-variant"
-                }`}
-              >
-                {totalPresent} / {totalAssigned} Present
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary">
+                  {totalPresent} Present
+                </span>
+                {totalAbsent > 0 && (
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                    {totalAbsent} Absent
+                  </span>
+                )}
+                {totalUnmarked > 0 && (
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-surface-container-high text-on-surface-variant">
+                    {totalUnmarked} Pending
+                  </span>
+                )}
+              </div>
             )}
             <span className="bg-surface-container-high rounded-full px-3 py-1.5 flex items-center gap-1.5 text-on-surface-variant text-xs font-semibold">
               <span className="material-symbols-outlined text-[16px]">
@@ -538,7 +628,7 @@ const Attendance = () => {
             {totalUnmarked > 0 && (
               <div className="pt-3 border-t border-outline-variant/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <p className="text-xs text-on-surface-variant">
-                  <strong>{totalUnmarked}</strong> worker(s) not yet marked for{" "}
+                  <strong>{totalUnmarked}</strong> pending worker(s) unrecorded for{" "}
                   <strong>{selectedDate}</strong>.
                 </p>
                 <button
@@ -556,7 +646,7 @@ const Attendance = () => {
                   </span>
                   {batchSubmitting
                     ? "Marking…"
-                    : `Mark All Present (${totalUnmarked})`}
+                    : `Mark Remaining Present (${totalUnmarked})`}
                 </button>
               </div>
             )}
@@ -586,7 +676,10 @@ const Attendance = () => {
                 const blockPresent = workers.filter((w) =>
                   presentSet.has(w.staff_id),
                 ).length;
-                const blockUnmarked = workers.length - blockPresent;
+                const blockAbsent = workers.filter((w) =>
+                  !presentSet.has(w.staff_id) && !!absenceMap[w.staff_id],
+                ).length;
+                const blockUnmarked = workers.length - blockPresent - blockAbsent;
                 const blockPct =
                   workers.length > 0
                     ? Math.round((blockPresent / workers.length) * 100)
@@ -607,9 +700,22 @@ const Attendance = () => {
                           <h3 className="font-bold text-on-surface text-sm">
                             {locName}
                           </h3>
-                          <p className="text-[11px] text-on-surface-variant">
-                            {blockPresent}/{workers.length} present · {blockPct}
-                            % attendance
+                          <p className="text-[11px] text-on-surface-variant flex items-center gap-1.5 mt-0.5">
+                            <span className="text-primary font-semibold">{blockPresent} present</span>
+                            {blockAbsent > 0 && (
+                              <>
+                                <span>·</span>
+                                <span className="text-amber-800 font-semibold">{blockAbsent} absent</span>
+                              </>
+                            )}
+                            {blockUnmarked > 0 && (
+                              <>
+                                <span>·</span>
+                                <span>{blockUnmarked} pending</span>
+                              </>
+                            )}
+                            <span>·</span>
+                            <span>{blockPct}% attendance</span>
                           </p>
                         </div>
                       </div>
@@ -622,7 +728,7 @@ const Attendance = () => {
                           <span className="material-symbols-outlined text-[14px]">
                             done_all
                           </span>
-                          Mark {blockUnmarked} remaining
+                          Mark {blockUnmarked} pending present
                         </button>
                       )}
                     </div>
@@ -632,6 +738,7 @@ const Attendance = () => {
                       {workers.map((worker) => {
                         const isPresent = presentSet.has(worker.staff_id);
                         const absenceEntry = absenceMap[worker.staff_id];
+                        const isAbsent = !isPresent && !!absenceEntry;
                         const initials =
                           worker.full_name
                             ?.split(" ")
@@ -645,7 +752,9 @@ const Attendance = () => {
                             key={worker.id}
                             className={`flex items-center justify-between py-3 px-5 transition-colors ${
                               isPresent
-                                ? "bg-primary/[0.03]"
+                                ? "bg-primary/[0.04]"
+                                : isAbsent
+                                ? "bg-amber-500/[0.04]"
                                 : "hover:bg-surface-container-lowest"
                             }`}
                           >
@@ -665,29 +774,31 @@ const Attendance = () => {
                               <div
                                 className={`w-9 h-9 rounded-full items-center justify-center font-bold text-xs shrink-0 ${
                                   worker.photo_url ? "hidden" : "flex"
-                                } ${isPresent ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}
+                                } ${
+                                  isPresent
+                                    ? "bg-primary text-white"
+                                    : isAbsent
+                                    ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                    : "bg-surface-container-high text-on-surface-variant"
+                                }`}
                               >
                                 {initials}
                               </div>
                               <div className="min-w-0">
-                                <p
-                                  className={`text-sm font-semibold truncate ${isPresent ? "text-on-surface" : "text-on-surface"}`}
-                                >
+                                <p className="text-sm font-semibold truncate text-on-surface">
                                   {worker.full_name}
                                 </p>
-                                <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-2 flex-wrap mt-0.5">
                                   <span className="font-mono text-[10px] text-on-surface-variant">
                                     {worker.staff_id}
                                   </span>
-                                  {/* Absence note badge */}
-                                  {!isPresent && absenceEntry && (
-                                    <span className="flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 max-w-[160px]">
-                                      <span className="material-symbols-outlined text-[11px]">
-                                        note
+                                  {/* Absence reason badge */}
+                                  {isAbsent && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 max-w-[220px]">
+                                      <span className="material-symbols-outlined text-[11px] text-amber-600">
+                                        cancel
                                       </span>
-                                      <span className="truncate">
-                                        {absenceEntry.reason}
-                                      </span>
+                                      <span className="truncate">{absenceEntry.reason}</span>
                                     </span>
                                   )}
                                 </div>
@@ -698,8 +809,8 @@ const Attendance = () => {
                             <div className="flex items-center gap-1.5 shrink-0 ml-3">
                               {isPresent ? (
                                 <>
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary font-bold text-[11px]">
-                                    <span className="material-symbols-outlined text-[14px]">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-primary font-bold text-xs">
+                                    <span className="material-symbols-outlined text-[15px]">
                                       check_circle
                                     </span>
                                     Present
@@ -707,7 +818,34 @@ const Attendance = () => {
                                   <button
                                     onClick={() => handleUnmarkPresent(worker)}
                                     className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded-lg transition-colors"
-                                    title="Undo"
+                                    title="Undo attendance"
+                                  >
+                                    <span className="material-symbols-outlined text-[17px]">
+                                      undo
+                                    </span>
+                                  </button>
+                                </>
+                              ) : isAbsent ? (
+                                <>
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 font-bold text-xs">
+                                    <span className="material-symbols-outlined text-[15px]">
+                                      cancel
+                                    </span>
+                                    Absent
+                                  </span>
+                                  <button
+                                    onClick={() => setAbsenceModalWorker(worker)}
+                                    className="p-1.5 text-on-surface-variant hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
+                                    title="Edit absence remark"
+                                  >
+                                    <span className="material-symbols-outlined text-[17px]">
+                                      edit_note
+                                    </span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemoveAbsence(worker)}
+                                    className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded-lg transition-colors"
+                                    title="Clear absent status"
                                   >
                                     <span className="material-symbols-outlined text-[17px]">
                                       undo
@@ -716,50 +854,27 @@ const Attendance = () => {
                                 </>
                               ) : (
                                 <>
-                                  {/* Log absence button */}
                                   <button
-                                    onClick={() =>
-                                      setAbsenceModalWorker(worker)
-                                    }
-                                    className={`p-1.5 rounded-lg transition-colors ${
-                                      absenceEntry
-                                        ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
-                                        : "text-on-surface-variant hover:text-amber-600 hover:bg-amber-50"
-                                    }`}
-                                    title={
-                                      absenceEntry
-                                        ? "Edit absence reason"
-                                        : "Log absence reason"
-                                    }
+                                    onClick={() => setAbsenceModalWorker(worker)}
+                                    disabled={batchSubmitting}
+                                    className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-outline-variant hover:border-amber-300 bg-white text-on-surface-variant hover:text-amber-800 hover:bg-amber-50/50 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
+                                    title="Mark absent"
                                   >
-                                    <span className="material-symbols-outlined text-[17px]">
-                                      {absenceEntry ? "edit_note" : "note_add"}
+                                    <span className="material-symbols-outlined text-[15px] text-amber-600">
+                                      close
                                     </span>
+                                    Absent
                                   </button>
-                                  {/* Remove note if exists */}
-                                  {absenceEntry && (
-                                    <button
-                                      onClick={() =>
-                                        handleRemoveAbsence(worker)
-                                      }
-                                      className="p-1.5 rounded-lg text-on-surface-variant hover:text-error hover:bg-error-container/20 transition-colors"
-                                      title="Remove absence note"
-                                    >
-                                      <span className="material-symbols-outlined text-[17px]">
-                                        remove_circle_outline
-                                      </span>
-                                    </button>
-                                  )}
-                                  {/* Mark Present */}
                                   <button
                                     onClick={() => handleMarkPresent(worker)}
                                     disabled={batchSubmitting}
-                                    className="bg-white border border-outline-variant hover:border-primary text-on-surface hover:text-primary px-3 py-1.5 rounded-xl font-semibold text-xs transition-all flex items-center gap-1 shadow-sm hover:shadow active:scale-95 disabled:opacity-50"
+                                    className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-primary text-white hover:bg-[#0E4526] flex items-center gap-1 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                    title="Mark present"
                                   >
-                                    <span className="material-symbols-outlined text-[14px]">
+                                    <span className="material-symbols-outlined text-[15px]">
                                       done
                                     </span>
-                                    Mark
+                                    Present
                                   </button>
                                 </>
                               )}

@@ -571,7 +571,7 @@ const Workers = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="font-label-md text-xs font-semibold text-on-surface block">
-                        Staff ID / Vetting Ref <span className="text-error">*</span>
+                        Staff ID <span className="text-error">*</span>
                       </label>
                       <input
                         type="text"
@@ -590,7 +590,7 @@ const Workers = () => {
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. Ibrahim Sani"
+                        placeholder="e.g. Paul Yusuf"
                         className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}

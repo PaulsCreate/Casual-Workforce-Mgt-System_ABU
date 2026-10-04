@@ -50,6 +50,7 @@ const Workers = () => {
   const [submitting, setSubmitting] = useState(false);
 
   const navigate = useNavigate();
+  const isHealthDivision = divisionName.toLowerCase().includes("health");
 
   const loadWorkers = async (isActive = () => true) => {
     try {
@@ -122,6 +123,10 @@ const Workers = () => {
 
   const handleAssignDivChange = async (divId) => {
     setAssignDivId(divId);
+    const selectedDivision = divisions.find(
+      (division) => Number(division.id) === Number(divId),
+    );
+    setDivisionName(selectedDivision?.name || "");
     setAssignUnitId("");
     setAssignLocId("");
     setUnits([]);
@@ -136,7 +141,7 @@ const Workers = () => {
     setAssignUnitId(unitId);
     setAssignLocId("");
     setLocations([]);
-    if (unitId) {
+    if (unitId && !isHealthDivision) {
       const data = await getLocations(unitId);
       setLocations(data);
     }
@@ -161,10 +166,12 @@ const Workers = () => {
         next_of_kin_phone: nextOfKinPhone.trim() || null,
       };
 
-      if (assignDivId && assignUnitId && assignLocId) {
+      if (assignDivId && assignUnitId && (isHealthDivision || assignLocId)) {
         payload.division_id = Number(assignDivId);
         payload.operational_unit_id = Number(assignUnitId);
-        payload.operational_location_id = Number(assignLocId);
+        if (assignLocId) {
+          payload.operational_location_id = Number(assignLocId);
+        }
         payload.effective_date = assignEffectiveFrom || appointmentDate;
       }
 
@@ -723,57 +730,63 @@ const Workers = () => {
                       </select>
                     </div>
 
-                    {/* Operational Location Field */}
-                    <div className="space-y-1">
-                      <label className="font-label-md text-xs font-semibold text-on-surface block">
-                        Operational Location / Zone
-                      </label>
-                      <select
-                        className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all disabled:bg-surface-container-low disabled:text-on-surface-variant/60"
-                        value={assignLocId}
-                        onChange={(e) => setAssignLocId(e.target.value)}
-                        disabled={submitting || !assignUnitId}
-                      >
-                        <option value="">{!assignUnitId ? "Select Unit first..." : "Choose Block / Zone..."}</option>
-                        {(() => {
-                          const groups = {};
-                          const ungrouped = [];
-                          locations.forEach((loc) => {
-                            if (loc.name.includes(" — ")) {
-                              const [hostel, block] = loc.name.split(" — ");
-                              if (!groups[hostel]) groups[hostel] = [];
-                              groups[hostel].push({ ...loc, blockName: block });
-                            } else {
-                              ungrouped.push(loc);
-                            }
-                          });
+                    {/* University Health Services workers are assigned unit-wide. */}
+                    {isHealthDivision ? (
+                      <p className="text-sm text-on-surface-variant sm:col-span-2">
+                        No specific location is needed for this division.
+                      </p>
+                    ) : (
+                      <div className="space-y-1">
+                        <label className="font-label-md text-xs font-semibold text-on-surface block">
+                          Operational Location / Zone
+                        </label>
+                        <select
+                          className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all disabled:bg-surface-container-low disabled:text-on-surface-variant/60"
+                          value={assignLocId}
+                          onChange={(e) => setAssignLocId(e.target.value)}
+                          disabled={submitting || !assignUnitId}
+                        >
+                          <option value="">{!assignUnitId ? "Select Unit first..." : "Choose Block / Zone..."}</option>
+                          {(() => {
+                            const groups = {};
+                            const ungrouped = [];
+                            locations.forEach((loc) => {
+                              if (loc.name.includes(" — ")) {
+                                const [hostel, block] = loc.name.split(" — ");
+                                if (!groups[hostel]) groups[hostel] = [];
+                                groups[hostel].push({ ...loc, blockName: block });
+                              } else {
+                                ungrouped.push(loc);
+                              }
+                            });
 
-                          const hasGroups = Object.keys(groups).length > 0;
-                          if (!hasGroups) {
-                            return locations.map((l) => (
-                              <option key={l.id} value={l.id}>{l.name}</option>
-                            ));
-                          }
-
-                          return (
-                            <>
-                              {ungrouped.map((l) => (
+                            const hasGroups = Object.keys(groups).length > 0;
+                            if (!hasGroups) {
+                              return locations.map((l) => (
                                 <option key={l.id} value={l.id}>{l.name}</option>
-                              ))}
-                              {Object.entries(groups).map(([hostelName, locs]) => (
-                                <optgroup key={hostelName} label={`📍 ${hostelName}`}>
-                                  {locs.map((l) => (
-                                    <option key={l.id} value={l.id}>
-                                      {l.name}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              ))}
-                            </>
-                          );
-                        })()}
-                      </select>
-                    </div>
+                              ));
+                            }
+
+                            return (
+                              <>
+                                {ungrouped.map((l) => (
+                                  <option key={l.id} value={l.id}>{l.name}</option>
+                                ))}
+                                {Object.entries(groups).map(([hostelName, locs]) => (
+                                  <optgroup key={hostelName} label={`📍 ${hostelName}`}>
+                                    {locs.map((l) => (
+                                      <option key={l.id} value={l.id}>
+                                        {l.name}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                              </>
+                            );
+                          })()}
+                        </select>
+                      </div>
+                    )}
 
                     {/* Effective Date Field */}
                     <div className="space-y-1">
@@ -785,7 +798,7 @@ const Workers = () => {
                         className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all disabled:bg-surface-container-low disabled:text-on-surface-variant/60"
                         value={assignEffectiveFrom}
                         onChange={(e) => setAssignEffectiveFrom(e.target.value)}
-                        disabled={submitting || !assignLocId}
+                        disabled={submitting || !assignUnitId || (!isHealthDivision && !assignLocId)}
                       />
                     </div>
                   </div>

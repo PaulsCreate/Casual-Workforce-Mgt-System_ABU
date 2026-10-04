@@ -14,6 +14,18 @@ async function createOperationalLocation({
   return result.rows[0];
 }
 
+async function getOrCreateUnitWideLocation(operational_unit_id) {
+  const result = await pool.query(
+    `INSERT INTO operational_locations (operational_unit_id, name, description)
+     VALUES ($1, 'Unit-wide (no specific location)', 'Internal assignment location for units without a specific worksite')
+     ON CONFLICT (operational_unit_id, name)
+     DO UPDATE SET description = EXCLUDED.description
+     RETURNING *`,
+    [operational_unit_id],
+  );
+  return result.rows[0];
+}
+
 async function getAllOperationalLocations(operational_unit_id, division_id) {
   if (operational_unit_id) {
     let query = `
@@ -72,6 +84,7 @@ async function deleteOperationalLocation(id) {
 
 module.exports = {
   createOperationalLocation,
+  getOrCreateUnitWideLocation,
   getAllOperationalLocations,
   getOperationalLocationById,
   updateOperationalLocation,

@@ -32,6 +32,17 @@ async function getOperationalUnitById(id) {
   return result.rows[0];
 }
 
+async function getOperationalUnitWithDivisionById(id) {
+  const result = await pool.query(
+    `SELECT ou.*, d.name AS division_name
+     FROM operational_units ou
+     JOIN divisions d ON d.id = ou.division_id
+     WHERE ou.id = $1`,
+    [id],
+  );
+  return result.rows[0];
+}
+
 async function updateOperationalUnit(id, { name, description }) {
   const result = await pool.query(
     `UPDATE operational_units SET name = $1, description = $2 WHERE id = $3 RETURNING *`,
@@ -52,6 +63,7 @@ module.exports = {
   createOperationalUnit,
   getAllOperationalUnits,
   getOperationalUnitById,
+  getOperationalUnitWithDivisionById,
   updateOperationalUnit,
   deleteOperationalUnit,
 };

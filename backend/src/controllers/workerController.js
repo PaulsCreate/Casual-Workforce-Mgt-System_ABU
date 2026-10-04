@@ -9,6 +9,13 @@ const {
 } = require("../models/workerModel");
 const { logAction } = require("../models/auditLogModel");
 const { createInitialAssignment } = require("../models/assignmentModel");
+const {
+  getOrCreateUnitWideLocation,
+  getOperationalLocationById,
+} = require("../models/operationalLocationModel");
+const {
+  getOperationalUnitWithDivisionById,
+} = require("../models/operationalUnitModel");
 const path = require("path");
 const fs = require("fs");
 
@@ -44,6 +51,55 @@ async function create(req, res) {
       });
     }
 
+    const hasAssignmentDetails = [
+      division_id,
+      operational_unit_id,
+      operational_location_id,
+      effective_date,
+    ].some((value) => value !== undefined && value !== null && value !== "");
+    let assignment = null;
+
+    if (hasAssignmentDetails) {
+      if (!division_id || !operational_unit_id || !effective_date) {
+        return res.status(400).json({
+          error: "division_id, operational_unit_id, and effective_date are required for deployment",
+        });
+      }
+
+      const unit = await getOperationalUnitWithDivisionById(operational_unit_id);
+      if (!unit || Number(unit.division_id) !== Number(division_id)) {
+        return res.status(400).json({
+          error: "The selected operational unit does not belong to that division",
+        });
+      }
+
+      const isHealthDivision = unit.division_name.toLowerCase().includes("health");
+      let locationId = operational_location_id;
+      if (!locationId && !isHealthDivision) {
+        return res.status(400).json({
+          error: "An operational location is required for this division",
+        });
+      }
+      if (locationId) {
+        const location = await getOperationalLocationById(locationId);
+        if (
+          !location ||
+          Number(location.operational_unit_id) !== Number(operational_unit_id)
+        ) {
+          return res.status(400).json({
+            error: "The selected operational location does not belong to that unit",
+          });
+        }
+      }
+
+      assignment = {
+        division_id,
+        operational_unit_id,
+        operational_location_id: locationId || null,
+        effective_from: effective_date,
+      };
+    }
+
     const worker = await createWorker({
       staff_id,
       full_name,
@@ -63,18 +119,16 @@ async function create(req, res) {
       details: { staff_id: worker.staff_id, full_name: worker.full_name },
     });
 
-    if (
-      division_id &&
-      operational_unit_id &&
-      operational_location_id &&
-      effective_date
-    ) {
+    if (assignment) {
+      if (!assignment.operational_location_id) {
+        const unitWideLocation = await getOrCreateUnitWideLocation(
+          assignment.operational_unit_id,
+        );
+        assignment.operational_location_id = unitWideLocation.id;
+      }
       await createInitialAssignment({
         worker_id: worker.id,
-        division_id,
-        operational_unit_id,
-        operational_location_id,
-        effective_from: effective_date,
+        ...assignment,
       });
     }
 
@@ -377,4 +431,3 @@ module.exports = {
   bulkImport,
   bulkUploadPhotos,
 };
-

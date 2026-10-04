@@ -18,8 +18,8 @@ const DivisionBanner = ({ subtitle, className = "" }) => {
 
     if (
       divName.includes("student affairs") ||
-      divName.includes("hall") ||
-      Number(user?.division_id) === 2
+      divName.includes("hall")
+      // Number(user?.division_id) === 2
     ) {
       return {
         title: "Student Affairs Division",
@@ -32,15 +32,15 @@ const DivisionBanner = ({ subtitle, className = "" }) => {
 
     if (
       divName.includes("health") ||
-      divName.includes("sanitation") ||
-      Number(user?.division_id) === 1
+      divName.includes("sanitation")
+      // Number(user?.division_id) === 1
     ) {
       return {
         title: "University Health Services",
         unitTitle: "Environmental Sanitation Unit",
         description:
           subtitle ||
-          "Workforce across Faculties, Centers & Administrative Units",
+          "Workforce across Faculties, Centers & Administrative Buildings",
         icon: "health_and_safety",
         accentClass: "border-l-teal-700",
       };
@@ -49,10 +49,9 @@ const DivisionBanner = ({ subtitle, className = "" }) => {
     if (isGeneralAdmin) {
       return {
         title: "University-Wide Administration",
-        unitTitle: "General Directorate",
+        unitTitle: "Central Administration",
         description:
-          subtitle ||
-          "Consolidated oversight across Student Affairs (Hostels) & University Health Services (Faculties)",
+          subtitle || "Overseeing workforce operations across all divisions.",
         icon: "verified_user",
         accentClass: "border-l-primary",
       };

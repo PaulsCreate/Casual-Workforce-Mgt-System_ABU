@@ -141,9 +141,18 @@ const Workers = () => {
     setAssignUnitId(unitId);
     setAssignLocId("");
     setLocations([]);
-    if (unitId && !isHealthDivision) {
+    if (unitId) {
       const data = await getLocations(unitId);
       setLocations(data);
+      if (data && data.length > 0) {
+        const selectedUnit = units.find((u) => Number(u.id) === Number(unitId));
+        const exactMatch = data.find((l) => l.name === selectedUnit?.name);
+        if (exactMatch) {
+          setAssignLocId(String(exactMatch.id));
+        } else if (data.length === 1) {
+          setAssignLocId(String(data[0].id));
+        }
+      }
     }
   };
 
@@ -730,11 +739,31 @@ const Workers = () => {
                       </select>
                     </div>
 
-                    {/* University Health Services workers are assigned unit-wide. */}
+                    {/* In University Health Services, station corresponds directly to the unit building */}
                     {isHealthDivision ? (
-                      <p className="text-sm text-on-surface-variant sm:col-span-2">
-                        No specific location is needed for this division.
-                      </p>
+                      <div className="space-y-1 sm:col-span-1">
+                        <label className="font-label-md text-xs font-semibold text-on-surface block">
+                          Operational Location / Station
+                        </label>
+                        <div className="p-2.5 bg-surface-container-low border border-outline-variant/60 rounded-lg text-sm text-on-surface flex items-center justify-between">
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="material-symbols-outlined text-[18px] text-primary shrink-0">
+                              location_on
+                            </span>
+                            <span className="font-semibold truncate">
+                              {units.find((u) => String(u.id) === String(assignUnitId))?.name ||
+                                (isAdmin && !assignDivId
+                                  ? "Select Division first..."
+                                  : "Select Unit first...")}
+                            </span>
+                          </div>
+                          {assignUnitId && (
+                            <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full border border-primary/20 shrink-0">
+                              Matches Unit
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     ) : (
                       <div className="space-y-1">
                         <label className="font-label-md text-xs font-semibold text-on-surface block">

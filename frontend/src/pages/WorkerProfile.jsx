@@ -210,6 +210,15 @@ const WorkerProfile = () => {
     if (unitId) {
       const data = await getLocations(unitId);
       setLocations(data);
+      if (data && data.length > 0) {
+        const selectedUnit = units.find((u) => Number(u.id) === Number(unitId));
+        const exactMatch = data.find((l) => l.name === selectedUnit?.name);
+        if (exactMatch) {
+          setAssignLocId(String(exactMatch.id));
+        } else if (data.length === 1) {
+          setAssignLocId(String(data[0].id));
+        }
+      }
     }
   };
 
@@ -232,6 +241,15 @@ const WorkerProfile = () => {
     if (unitId) {
       const data = await getLocations(unitId);
       setTransLocations(data);
+      if (data && data.length > 0) {
+        const selectedUnit = transUnits.find((u) => Number(u.id) === Number(unitId));
+        const exactMatch = data.find((l) => l.name === selectedUnit?.name);
+        if (exactMatch) {
+          setTransLocId(String(exactMatch.id));
+        } else if (data.length === 1) {
+          setTransLocId(String(data[0].id));
+        }
+      }
     }
   };
 

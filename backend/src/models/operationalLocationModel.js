@@ -15,13 +15,44 @@ async function createOperationalLocation({
 }
 
 async function getOrCreateUnitWideLocation(operational_unit_id) {
+  const unitRes = await pool.query(
+    "SELECT name, description FROM operational_units WHERE id = $1",
+    [operational_unit_id],
+  );
+  const locationName = unitRes.rows[0]?.name || "Main Station";
+  const locationDesc =
+    unitRes.rows[0]?.description || `Primary station for ${locationName}`;
+
+  // Check if a location for this unit already exists (e.g. matching unit name or any location)
+  const existingLoc = await pool.query(
+    `SELECT * FROM operational_locations 
+     WHERE operational_unit_id = $1 
+     ORDER BY (name = $2) DESC, id ASC 
+     LIMIT 1`,
+    [operational_unit_id, locationName],
+  );
+
+  if (existingLoc.rows.length > 0) {
+    if (existingLoc.rows[0].name === "Unit-wide (no specific location)") {
+      const updated = await pool.query(
+        `UPDATE operational_locations 
+         SET name = $1, description = $2 
+         WHERE id = $3 
+         RETURNING *`,
+        [locationName, locationDesc, existingLoc.rows[0].id],
+      );
+      return updated.rows[0];
+    }
+    return existingLoc.rows[0];
+  }
+
   const result = await pool.query(
     `INSERT INTO operational_locations (operational_unit_id, name, description)
-     VALUES ($1, 'Unit-wide (no specific location)', 'Internal assignment location for units without a specific worksite')
+     VALUES ($1, $2, $3)
      ON CONFLICT (operational_unit_id, name)
      DO UPDATE SET description = EXCLUDED.description
      RETURNING *`,
-    [operational_unit_id],
+    [operational_unit_id, locationName, locationDesc],
   );
   return result.rows[0];
 }

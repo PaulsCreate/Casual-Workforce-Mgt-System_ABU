@@ -34,6 +34,8 @@ const Reports = () => {
   const { user } = useAuth();
   const isAdminTier = user?.role === "administrator" || user?.role === "division_admin";
   const isSupervisor = user?.role === "supervisor";
+  // UHS uses flat locations (dept names), SA uses "Hostel — Block" compound names
+  const isHealthDivision = user?.division_name?.toLowerCase().includes("health");
 
   const [locations, setLocations] = useState([]);
   
@@ -68,9 +70,11 @@ const Reports = () => {
 
       if (locData.length > 0) {
         setSelectedLocationId(String(locData[0].id));
-        const firstHostel = locData[0].name.includes(" — ")
-          ? locData[0].name.split(" — ")[0].trim()
-          : locData[0].name;
+        const firstHostel = isHealthDivision
+          ? (locData[0].unit_name || locData[0].name)
+          : locData[0].name.includes(" — ")
+            ? locData[0].name.split(" — ")[0].trim()
+            : locData[0].name;
         setSelectedHostel(firstHostel);
       }
     } catch (err) {
@@ -83,20 +87,24 @@ const Reports = () => {
     if (user) loadLocations();
   }, [user]);
 
-  // Extract unique hostels from assigned locations
+  // Extract unique hostels/departments from assigned locations
   const uniqueHostels = Array.from(
     new Set(
       locations.map((loc) =>
-        loc.name.includes(" — ") ? loc.name.split(" — ")[0].trim() : loc.name
+        isHealthDivision
+          ? (loc.unit_name || loc.name)
+          : loc.name.includes(" — ") ? loc.name.split(" — ")[0].trim() : loc.name
       )
     )
   );
 
-  // Available blocks for the selected hostel
+  // Available blocks/locations for the selected hostel/department
   const availableBlocksForHostel = locations.filter((loc) => {
     if (!selectedHostel) return true;
-    const h = loc.name.includes(" — ") ? loc.name.split(" — ")[0].trim() : loc.name;
-    return h === selectedHostel;
+    const prefix = isHealthDivision
+      ? (loc.unit_name || loc.name)
+      : (loc.name.includes(" — ") ? loc.name.split(" — ")[0].trim() : loc.name);
+    return prefix === selectedHostel;
   });
 
   // Calculate target location IDs for current selection
@@ -270,9 +278,9 @@ const Reports = () => {
     // Metadata Table Block (uses autoTable to guarantee zero overlapping text)
     const scopeName =
       reportScope === "all_hostels"
-        ? "All Hostels Consolidated (Master Register)"
+        ? isHealthDivision ? "All Departments Consolidated (Master Register)" : "All Hostels Consolidated (Master Register)"
         : reportScope === "hostel"
-        ? `${selectedHostel} (Consolidated Register)`
+        ? isHealthDivision ? `${selectedHostel} (Consolidated Dept Register)` : `${selectedHostel} (Consolidated Register)`
         : locations.find((l) => String(l.id) === String(selectedLocationId))?.name || "—";
 
     const statusLabel = {
@@ -330,7 +338,7 @@ const Reports = () => {
         // Section Header Row
         tableBody.push([
           {
-            content: `HOSTEL / STATION: ${hostelName.toUpperCase()} (${hWorkers.length} Workers)`,
+            content: `${isHealthDivision ? "DEPT / STATION:" : "HOSTEL / STATION:"} ${hostelName.toUpperCase()} (${hWorkers.length} Workers)`,
             colSpan: 8,
             styles: { fillColor: [225, 238, 228], textColor: [0, 65, 32], fontStyle: "bold", halign: "left" },
           },
@@ -339,7 +347,9 @@ const Reports = () => {
 
       hWorkers.forEach((item) => {
         const isCompound = item.location_name && item.location_name.includes(" — ");
-        const blockName = isCompound ? item.location_name.split(" — ")[1].trim() : (item.location_name || "—");
+        const blockName = isHealthDivision
+          ? (item.location_name || "—")
+          : isCompound ? item.location_name.split(" — ")[1].trim() : (item.location_name || "—");
 
         tableBody.push([
           String(snCounter++),
@@ -356,7 +366,7 @@ const Reports = () => {
 
     doc.autoTable({
       startY,
-      head: [["S/N", "Staff ID", "Worker Full Name", "Block / Zone", "National ID (NIN)", "Days Present", "Working Days", "Attend. %"]],
+      head: [["S/N", "Staff ID", "Worker Full Name", isHealthDivision ? "Location / Zone" : "Block / Zone", "National ID (NIN)", "Days Present", "Working Days", "Attend. %"]],
       body: tableBody,
       styles: { fontSize: 8, cellPadding: 2.5, lineColor: [200, 200, 200], lineWidth: 0.2 },
       headStyles: { fillColor: [0, 65, 32], textColor: [255, 255, 255], fontStyle: "bold", halign: "center" },
@@ -434,8 +444,8 @@ const Reports = () => {
       "S/N",
       "Staff ID",
       "Worker Full Name",
-      "Hostel / Location",
-      "Block / Station",
+      isHealthDivision ? "Department / Location" : "Hostel / Location",
+      isHealthDivision ? "Location / Station" : "Block / Station",
       "Phone Number",
       "National ID (NIN)",
       "Days Worked",
@@ -453,8 +463,12 @@ const Reports = () => {
       const hWorkers = workersByHostel[hostelName] || [];
       hWorkers.forEach((w) => {
         const isCompound = w.location_name && w.location_name.includes(" — ");
-        const hostel = isCompound ? w.location_name.split(" — ")[0].trim() : (w.location_name || "—");
-        const block = isCompound ? w.location_name.split(" — ")[1].trim() : (w.location_name || "—");
+        const hostel = isHealthDivision
+          ? (w.unit_name || w.location_name || "—")
+          : isCompound ? w.location_name.split(" — ")[0].trim() : (w.location_name || "—");
+        const block = isHealthDivision
+          ? (w.location_name || "—")
+          : isCompound ? w.location_name.split(" — ")[1].trim() : (w.location_name || "—");
 
         rows.push([
           rowIdx++,
@@ -503,17 +517,24 @@ const Reports = () => {
     }
   };
 
-  // Group workers by hostel for structured display
+  // Group workers by hostel/department for structured display
   const workersByHostel = {};
   if (reportData?.workers) {
     reportData.workers.forEach((w) => {
-      const isCompound = w.location_name && w.location_name.includes(" — ");
-      const hostel = isCompound ? w.location_name.split(" — ")[0].trim() : (w.location_name || "General Deployment");
-      if (!workersByHostel[hostel]) workersByHostel[hostel] = [];
-      workersByHostel[hostel].push(w);
+      let groupKey;
+      if (isHealthDivision) {
+        // UHS: flat — group by unit_name (same as location_name)
+        groupKey = w.unit_name || w.location_name || "General Deployment";
+      } else {
+        // SA: compound "HallName — BlockName" — group by prefix
+        const isCompound = w.location_name && w.location_name.includes(" — ");
+        groupKey = isCompound ? w.location_name.split(" — ")[0].trim() : (w.location_name || "General Deployment");
+      }
+      if (!workersByHostel[groupKey]) workersByHostel[groupKey] = [];
+      workersByHostel[groupKey].push(w);
     });
 
-    // Sort workers within each hostel alphabetically by full name
+    // Sort workers within each group alphabetically by full name
     Object.keys(workersByHostel).forEach((h) => {
       workersByHostel[h].sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
     });
@@ -523,8 +544,8 @@ const Reports = () => {
   const canExport = hasWorkers;
 
   const submitButtonLabel = () => {
-    if (reportScope === "all_hostels") return "Submit All Hostels Register";
-    if (reportScope === "hostel") return `Submit Hostel Register (${selectedHostel})`;
+    if (reportScope === "all_hostels") return isHealthDivision ? "Submit All Departments Register" : "Submit All Hostels Register";
+    if (reportScope === "hostel") return isHealthDivision ? `Submit Department Register (${selectedHostel})` : `Submit Hostel Register (${selectedHostel})`;
     return "Submit Monthly Register";
   };
 
@@ -556,9 +577,13 @@ const Reports = () => {
               <p className="font-body-md text-on-surface-variant">
                 {monthName} {selectedYear} · {
                   reportScope === "all_hostels"
-                    ? `All Hostels Consolidated (${uniqueHostels.length} hostels, ${reportData?.workers?.length || 0} workers)`
+                    ? isHealthDivision
+                      ? `All Departments Consolidated (${uniqueHostels.length} departments, ${reportData?.workers?.length || 0} workers)`
+                      : `All Hostels Consolidated (${uniqueHostels.length} hostels, ${reportData?.workers?.length || 0} workers)`
                     : reportScope === "hostel"
-                    ? `${selectedHostel} (Consolidated Hostel)`
+                    ? isHealthDivision
+                      ? `${selectedHostel} (Consolidated Department)`
+                      : `${selectedHostel} (Consolidated Hostel)`
                     : locations.find((l) => String(l.id) === String(selectedLocationId))?.name || "…"
                 }
               </p>
@@ -617,7 +642,11 @@ const Reports = () => {
                   ) : (
                     <span className="material-symbols-outlined text-[18px]">verified</span>
                   )}
-                  Verify & Authorise {reportScope === "all_hostels" ? "All Hostels" : "Register"}
+                  Verify & Authorise {
+                    reportScope === "all_hostels"
+                      ? isHealthDivision ? "All Departments" : "All Hostels"
+                      : "Register"
+                  }
                 </button>
               )}
             </div>
@@ -651,9 +680,9 @@ const Reports = () => {
                   value={reportScope}
                   onChange={(e) => setReportScope(e.target.value)}
                 >
-                  <option value="all_hostels">All hostels</option>
-                  <option value="hostel">Single hostel</option>
-                  <option value="single_block">Single block or location</option>
+                  <option value="all_hostels">{isHealthDivision ? "All departments" : "All hostels"}</option>
+                  <option value="hostel">{isHealthDivision ? "Single department" : "Single hostel"}</option>
+                  <option value="single_block">{isHealthDivision ? "Single location" : "Single block or location"}</option>
                 </select>
               </div>
 
@@ -661,7 +690,7 @@ const Reports = () => {
               {reportScope === "hostel" ? (
                 <div className="space-y-1">
                   <label className="font-label-md text-xs font-bold text-on-surface uppercase tracking-wider block">
-                    Choose Hostel
+                    {isHealthDivision ? "Choose Department" : "Choose Hostel"}
                   </label>
                   <select
                     className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none font-medium"
@@ -670,7 +699,7 @@ const Reports = () => {
                   >
                     {uniqueHostels.map((h) => (
                       <option key={h} value={h}>
-                        {h} ({locations.filter((l) => l.name.startsWith(h)).length} blocks)
+                        {h} ({locations.filter((l) => l.name.startsWith(h)).length} {isHealthDivision ? "locations" : "blocks"})
                       </option>
                     ))}
                   </select>
@@ -678,7 +707,7 @@ const Reports = () => {
               ) : reportScope === "single_block" ? (
                 <div className="space-y-1">
                   <label className="font-label-md text-xs font-bold text-on-surface uppercase tracking-wider block">
-                    Choose Block / Station
+                    {isHealthDivision ? "Choose Location" : "Choose Block / Station"}
                   </label>
                   <select
                     className="w-full p-2.5 border border-outline-variant rounded-lg font-body-md text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
@@ -695,11 +724,15 @@ const Reports = () => {
               ) : (
                 <div className="space-y-1">
                   <label className="font-label-md text-xs font-bold text-on-surface uppercase tracking-wider block">
-                    Hostels In Master Scope
+                    {isHealthDivision ? "Departments In Scope" : "Hostels In Master Scope"}
                   </label>
                   <div className="p-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-xs font-semibold text-primary flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm">domain</span>
-                    <span>All {uniqueHostels.length} hostels and units combined</span>
+                    <span>
+                      {isHealthDivision
+                        ? `All ${uniqueHostels.length} departments combined`
+                        : `All ${uniqueHostels.length} hostels and units combined`}
+                    </span>
                   </div>
                 </div>
               )}
@@ -750,7 +783,7 @@ const Reports = () => {
                 <p className="text-[11px] text-on-surface-variant mt-0.5">Active on register</p>
               </div>
               <div className="bg-white border border-outline-variant rounded-xl p-4 shadow-2xs">
-                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-bold">Total Hostels</p>
+                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-bold">{isHealthDivision ? "Total Departments" : "Total Hostels"}</p>
                 <p className="text-2xl font-bold text-primary mt-1">{Object.keys(workersByHostel).length}</p>
                 <p className="text-[11px] text-on-surface-variant mt-0.5">Operating stations</p>
               </div>
@@ -831,7 +864,7 @@ const Reports = () => {
                                 </span>
                               </div>
                               <p className="text-xs text-on-surface-variant mt-0.5">
-                                Blocks: <span className="font-medium text-on-surface">{uniqueBlocks.join(", ") || "General"}</span>
+                                {isHealthDivision ? "Location:" : "Blocks:"} <span className="font-medium text-on-surface">{uniqueBlocks.join(", ") || "General"}</span>
                               </p>
                             </div>
                           </div>
@@ -851,7 +884,7 @@ const Reports = () => {
                                 <th className="py-3 px-3 text-center w-12">S/N</th>
                                 <th className="py-3 px-3">Staff ID</th>
                                 <th className="py-3 px-3">Worker Full Name</th>
-                                <th className="py-3 px-3">Block / Station</th>
+                                <th className="py-3 px-3">{isHealthDivision ? "Location / Station" : "Block / Station"}</th>
                                 <th className="py-3 px-3 text-center">Days Worked</th>
                                 <th className="py-3 px-3 text-center">Working Days</th>
                                 <th className="py-3 px-3 text-center">Attendance %</th>

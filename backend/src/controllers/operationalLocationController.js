@@ -55,8 +55,8 @@ async function list(req, res) {
   try {
     // If unit is specified, fetch its locations directly (e.g. transfer target unit)
     // Otherwise, default division_admin to their own division
-    let divisionId = null;
-    if (!req.query.operational_unit_id && req.user.role === "division_admin") {
+    let divisionId = req.query.division_id || null;
+    if (req.user.role === "division_admin") {
       divisionId = req.user.division_id;
     }
     const locations = await getAllOperationalLocations(

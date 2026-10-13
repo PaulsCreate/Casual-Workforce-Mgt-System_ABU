@@ -60,8 +60,10 @@ async function getOrCreateUnitWideLocation(operational_unit_id) {
 async function getAllOperationalLocations(operational_unit_id, division_id) {
   if (operational_unit_id) {
     let query = `
-      SELECT ol.* FROM operational_locations ol
+      SELECT ol.*, ou.name AS unit_name, ou.division_id, d.name AS division_name
+      FROM operational_locations ol
       JOIN operational_units ou ON ou.id = ol.operational_unit_id
+      JOIN divisions d ON d.id = ou.division_id
       WHERE ol.operational_unit_id = $1
     `;
     const params = [operational_unit_id];
@@ -75,8 +77,10 @@ async function getAllOperationalLocations(operational_unit_id, division_id) {
   }
   if (division_id) {
     const result = await pool.query(
-      `SELECT ol.* FROM operational_locations ol
+      `SELECT ol.*, ou.name AS unit_name, ou.division_id, d.name AS division_name
+       FROM operational_locations ol
        JOIN operational_units ou ON ou.id = ol.operational_unit_id
+       JOIN divisions d ON d.id = ou.division_id
        WHERE ou.division_id = $1
        ORDER BY ol.operational_unit_id, ol.name`,
       [division_id]
@@ -84,7 +88,11 @@ async function getAllOperationalLocations(operational_unit_id, division_id) {
     return result.rows;
   }
   const result = await pool.query(
-    "SELECT * FROM operational_locations ORDER BY operational_unit_id, name",
+    `SELECT ol.*, ou.name AS unit_name, ou.division_id, d.name AS division_name
+     FROM operational_locations ol
+     JOIN operational_units ou ON ou.id = ol.operational_unit_id
+     JOIN divisions d ON d.id = ou.division_id
+     ORDER BY ou.division_id, ol.operational_unit_id, ol.name`,
   );
   return result.rows;
 }

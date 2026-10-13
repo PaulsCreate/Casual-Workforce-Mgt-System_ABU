@@ -28,6 +28,7 @@ const MONTHS = [
 
 const PendingReports = () => {
   const { user } = useAuth();
+  const isHealthDivision = user?.division_name?.toLowerCase().includes("health") || false;
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -95,7 +96,7 @@ const PendingReports = () => {
       const res = await verifyBatchReports({ verification_ids: verificationIds });
       setSuccess(
         res.message ||
-          `Successfully verified all ${group.reports.length} block(s) in ${group.groupName} for ${MONTHS[group.period_month]} ${group.period_year}!`
+          `Successfully verified all ${group.reports.length} ${isHealthDivision ? "station(s)" : "block(s)"} in ${group.groupName} for ${MONTHS[group.period_month]} ${group.period_year}!`
       );
       load();
     } catch (err) {
@@ -426,7 +427,7 @@ const PendingReports = () => {
                           {group.groupName}
                         </h3>
                         <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-xs">
-                          {group.reports.length} {group.reports.length === 1 ? "block" : "blocks"}
+                          {group.reports.length} {isHealthDivision ? (group.reports.length === 1 ? "station" : "stations") : (group.reports.length === 1 ? "block" : "blocks")}
                         </span>
                       </div>
                       

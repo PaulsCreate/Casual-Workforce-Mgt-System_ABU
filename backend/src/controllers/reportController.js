@@ -354,6 +354,8 @@ async function pending(req, res) {
     let reports;
     if (req.user.role === "division_admin" && req.user.division_id) {
       reports = await getPendingVerificationsByDivision(req.user.division_id);
+    } else if (req.query.division_id) {
+      reports = await getPendingVerificationsByDivision(req.query.division_id);
     } else {
       reports = await getPendingVerifications();
     }
@@ -369,6 +371,8 @@ async function dashboardStats(req, res) {
     let stats;
     if (req.user.role === "division_admin" && req.user.division_id) {
       stats = await getDashboardStatsByDivision(req.user.division_id);
+    } else if (req.query.division_id) {
+      stats = await getDashboardStatsByDivision(req.query.division_id);
     } else {
       stats = await getDashboardStats();
     }

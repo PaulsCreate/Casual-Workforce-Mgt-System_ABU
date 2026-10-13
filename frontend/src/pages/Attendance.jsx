@@ -173,6 +173,7 @@ function AbsenceModal({ worker, date, onClose, onSave, existingReason }) {
 ═══════════════════════════════════════════════════════════════════════════ */
 const Attendance = () => {
   const { user } = useAuth();
+  const isHealthDivision = user?.division_name?.toLowerCase().includes("health") || false;
   const [locations, setLocations] = useState([]);
   const [selectedHostel, setSelectedHostel] = useState("all");
   const [selectedBlockId, setSelectedBlockId] = useState("all");
@@ -559,7 +560,7 @@ const Attendance = () => {
                   <span className="material-symbols-outlined text-[14px] text-primary">
                     apartment
                   </span>
-                  Hostel
+                  {isHealthDivision ? "Dept / Unit" : "Hostel"}
                 </label>
                 <select
                   className="w-full p-2.5 border border-outline-variant rounded-xl text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
@@ -570,7 +571,7 @@ const Attendance = () => {
                   }}
                 >
                   <option value="all">
-                    All Hostels ({uniqueHostels.length})
+                    {isHealthDivision ? `All Departments (${uniqueHostels.length})` : `All Hostels (${uniqueHostels.length})`}
                   </option>
                   {uniqueHostels.map((h) => (
                     <option key={h} value={h}>
@@ -586,7 +587,7 @@ const Attendance = () => {
                   <span className="material-symbols-outlined text-[14px] text-secondary">
                     location_on
                   </span>
-                  Block / Zone
+                  {isHealthDivision ? "Location / Zone" : "Block / Zone"}
                 </label>
                 <select
                   className="w-full p-2.5 border border-outline-variant rounded-xl text-sm bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
@@ -594,7 +595,7 @@ const Attendance = () => {
                   onChange={(e) => setSelectedBlockId(e.target.value)}
                 >
                   <option value="all">
-                    All Blocks{" "}
+                    {isHealthDivision ? "All Locations" : "All Blocks"}{" "}
                     {selectedHostel !== "all"
                       ? `in ${selectedHostel}`
                       : `(${availableBlocksForHostel.length})`}

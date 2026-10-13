@@ -146,7 +146,7 @@ async function create(req, res) {
 
 async function list(req, res) {
   try {
-    let divisionId = null;
+    let divisionId = req.query.division_id || null;
     if (req.user.role === "division_admin") {
       divisionId = req.user.division_id;
     }

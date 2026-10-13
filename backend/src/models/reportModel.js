@@ -8,10 +8,19 @@ async function generateReportData(operational_location_id, month, year) {
        w.full_name,
        w.phone_number,
        w.national_id_nin,
+       ol.id AS location_id,
+       ol.name AS location_name,
+       ou.id AS unit_id,
+       ou.name AS unit_name,
+       d.id AS division_id,
+       d.name AS division_name,
        COUNT(att.id)::int AS days_worked,
        COALESCE(ARRAY_AGG(EXTRACT(DAY FROM att.attendance_date)::int) FILTER (WHERE att.id IS NOT NULL), '{}') AS days_present_array
      FROM assignments a
      JOIN workers w ON w.id = a.worker_id
+     JOIN operational_locations ol ON ol.id = a.operational_location_id
+     JOIN operational_units ou ON ou.id = ol.operational_unit_id
+     JOIN divisions d ON d.id = ou.division_id
      LEFT JOIN attendance att
        ON att.assignment_id = a.id
        AND EXTRACT(MONTH FROM att.attendance_date) = $2
@@ -19,7 +28,7 @@ async function generateReportData(operational_location_id, month, year) {
      WHERE a.operational_location_id = $1
        AND a.effective_from <= (make_date($3::int, $2::int, 1) + interval '1 month' - interval '1 day')
        AND (a.effective_to IS NULL OR a.effective_to >= make_date($3::int, $2::int, 1))
-     GROUP BY w.id, w.staff_id, w.full_name, w.phone_number, w.national_id_nin, a.effective_to
+     GROUP BY w.id, w.staff_id, w.full_name, w.phone_number, w.national_id_nin, ol.id, ol.name, ou.id, ou.name, d.id, d.name, a.effective_to
      HAVING (a.effective_to IS NULL OR COUNT(att.id) > 0)
      ORDER BY w.full_name`,
     [operational_location_id, month, year],
@@ -64,9 +73,17 @@ async function getReportStatus(operational_location_id, month, year) {
 
 async function getPendingVerifications() {
   const result = await pool.query(
-    `SELECT rv.*, ol.name AS location_name
+    `SELECT 
+       rv.*, 
+       ol.name AS location_name,
+       ou.id AS unit_id,
+       ou.name AS unit_name,
+       ou.division_id,
+       d.name AS division_name
      FROM report_verifications rv
      JOIN operational_locations ol ON ol.id = rv.operational_location_id
+     JOIN operational_units ou ON ou.id = ol.operational_unit_id
+     JOIN divisions d ON d.id = ou.division_id
      WHERE rv.status = 'submitted'
      ORDER BY rv.submitted_at`,
   );
@@ -96,10 +113,17 @@ async function getDashboardStats() {
 // Division-scoped pending reports — for division_admin
 async function getPendingVerificationsByDivision(divisionId) {
   const result = await pool.query(
-    `SELECT rv.*, ol.name AS location_name
+    `SELECT 
+       rv.*, 
+       ol.name AS location_name,
+       ou.id AS unit_id,
+       ou.name AS unit_name,
+       ou.division_id,
+       d.name AS division_name
      FROM report_verifications rv
      JOIN operational_locations ol ON ol.id = rv.operational_location_id
      JOIN operational_units ou ON ou.id = ol.operational_unit_id
+     JOIN divisions d ON d.id = ou.division_id
      WHERE rv.status = 'submitted'
        AND ou.division_id = $1
      ORDER BY rv.submitted_at`,
@@ -175,12 +199,15 @@ async function generateMultipleLocationsReportData(operational_location_ids, mon
        ol.name AS location_name,
        ou.id AS unit_id,
        ou.name AS unit_name,
+       d.id AS division_id,
+       d.name AS division_name,
        COUNT(att.id)::int AS days_worked,
        COALESCE(ARRAY_AGG(EXTRACT(DAY FROM att.attendance_date)::int) FILTER (WHERE att.id IS NOT NULL), '{}') AS days_present_array
      FROM assignments a
      JOIN workers w ON w.id = a.worker_id
      JOIN operational_locations ol ON ol.id = a.operational_location_id
      JOIN operational_units ou ON ou.id = ol.operational_unit_id
+     JOIN divisions d ON d.id = ou.division_id
      LEFT JOIN attendance att
        ON att.assignment_id = a.id
        AND EXTRACT(MONTH FROM att.attendance_date) = $2
@@ -188,9 +215,9 @@ async function generateMultipleLocationsReportData(operational_location_ids, mon
      WHERE a.operational_location_id = ANY($1::int[])
        AND a.effective_from <= (make_date($3::int, $2::int, 1) + interval '1 month' - interval '1 day')
        AND (a.effective_to IS NULL OR a.effective_to >= make_date($3::int, $2::int, 1))
-     GROUP BY w.id, w.staff_id, w.full_name, w.phone_number, w.national_id_nin, ol.id, ol.name, ou.id, ou.name, a.effective_to
+     GROUP BY w.id, w.staff_id, w.full_name, w.phone_number, w.national_id_nin, ol.id, ol.name, ou.id, ou.name, d.id, d.name, a.effective_to
      HAVING (a.effective_to IS NULL OR COUNT(att.id) > 0)
-     ORDER BY ol.name, w.full_name`,
+     ORDER BY d.name, ou.name, ol.name, w.full_name`,
     [operational_location_ids, month, year],
   );
   return result.rows;
